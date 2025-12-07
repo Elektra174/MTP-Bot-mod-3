@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import Cerebras from "@cerebras/cerebras_cloud_sdk";
+import Groq from "groq-sdk";
 import { chatRequestSchema, scenarios, type ChatResponse, type Message, type Session } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { selectBestScript, generateScriptGuidance, getScriptById, type MPTScript } from "./mpt-scripts";
@@ -25,9 +26,17 @@ import {
   type MPTStage
 } from "./session-state";
 
-const client = new Cerebras({
+const cerebrasClient = new Cerebras({
   apiKey: process.env.CEREBRAS_API_KEY,
 });
+
+const groqClient = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
+
+// Per-session fallback tracking with timestamp for periodic retry
+const sessionFallbackState = new Map<string, { useGroq: boolean; fallbackTime: number }>();
+const FALLBACK_RETRY_INTERVAL = 5 * 60 * 1000; // Retry Cerebras every 5 minutes
 
 const sessions = new Map<string, Session>();
 const sessionStates = new Map<string, SessionState>();
@@ -456,6 +465,23 @@ export async function registerRoutes(
       res.setHeader("Connection", "keep-alive");
       res.setHeader("X-Accel-Buffering", "no");
       
+      // Determine fallback state for this session
+      const fallbackState = sessionFallbackState.get(session.id);
+      const now = Date.now();
+      let useGroqForThisRequest = false;
+      
+      if (fallbackState?.useGroq) {
+        // Check if we should retry Cerebras
+        if (now - fallbackState.fallbackTime > FALLBACK_RETRY_INTERVAL) {
+          useGroqForThisRequest = false; // Try Cerebras again
+          console.log(`Session ${session.id}: Retrying Cerebras after fallback period`);
+        } else {
+          useGroqForThisRequest = true;
+        }
+      }
+      
+      let currentProvider = useGroqForThisRequest ? "groq" : "cerebras";
+      
       res.write(`data: ${JSON.stringify({ 
         type: "meta", 
         sessionId: session.id, 
@@ -464,29 +490,90 @@ export async function registerRoutes(
         scriptId: session.scriptId,
         scriptName: session.scriptName,
         currentStage: sessionState.currentStage,
-        stageName: MPT_STAGE_CONFIG[sessionState.currentStage].russianName
+        stageName: MPT_STAGE_CONFIG[sessionState.currentStage].russianName,
+        provider: currentProvider
       })}\n\n`);
-      
-      const stream = await client.chat.completions.create({
-        model: "qwen-3-235b-a22b-instruct-2507",
-        messages: [
-          { role: "system", content: contextualPrompt },
-          ...conversationHistory,
-        ],
-        max_tokens: 2000,
-        temperature: 0.7,
-        top_p: 0.8,
-        stream: true,
-      });
       
       let fullContent = "";
       
-      for await (const chunk of stream) {
-        const chunkData = chunk as { choices: Array<{ delta?: { content?: string } }> };
-        const content = chunkData.choices[0]?.delta?.content || "";
-        if (content) {
-          fullContent += content;
-          res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
+      const apiMessages = [
+        { role: "system" as const, content: contextualPrompt },
+        ...conversationHistory,
+      ];
+      
+      const streamWithCerebras = async () => {
+        const stream = await cerebrasClient.chat.completions.create({
+          model: "qwen-3-235b-a22b-instruct-2507",
+          messages: apiMessages,
+          max_tokens: 2000,
+          temperature: 0.7,
+          top_p: 0.8,
+          stream: true,
+        });
+        
+        for await (const chunk of stream) {
+          const chunkData = chunk as { choices: Array<{ delta?: { content?: string } }> };
+          const content = chunkData.choices[0]?.delta?.content || "";
+          if (content) {
+            fullContent += content;
+            res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
+          }
+        }
+      };
+      
+      const streamWithGroq = async () => {
+        const stream = await groqClient.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: apiMessages,
+          max_tokens: 2000,
+          temperature: 0.7,
+          top_p: 0.8,
+          stream: true,
+        });
+        
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          if (content) {
+            fullContent += content;
+            res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
+          }
+        }
+      };
+      
+      try {
+        if (useGroqForThisRequest) {
+          console.log(`Session ${session.id}: Using Groq (fallback mode active)`);
+          await streamWithGroq();
+        } else {
+          await streamWithCerebras();
+          // Cerebras succeeded - clear fallback state if it was set
+          if (fallbackState?.useGroq) {
+            sessionFallbackState.delete(session.id);
+            console.log(`Session ${session.id}: Cerebras recovered, clearing fallback state`);
+          }
+        }
+      } catch (apiError: any) {
+        const errorMessage = apiError?.message || String(apiError);
+        const isRateLimitError = errorMessage.includes("429") || 
+                                  errorMessage.toLowerCase().includes("rate limit") ||
+                                  errorMessage.toLowerCase().includes("tokens per day limit");
+        
+        if (isRateLimitError && !useGroqForThisRequest) {
+          console.log(`Session ${session.id}: Cerebras rate limit hit, switching to Groq fallback`);
+          sessionFallbackState.set(session.id, { useGroq: true, fallbackTime: Date.now() });
+          currentProvider = "groq";
+          
+          // Notify client about provider switch with updated metadata
+          res.write(`data: ${JSON.stringify({ type: "info", message: "Переключаюсь на резервный AI провайдер..." })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: "provider_switch", provider: "groq" })}\n\n`);
+          
+          try {
+            await streamWithGroq();
+          } catch (groqError) {
+            throw groqError;
+          }
+        } else {
+          throw apiError;
         }
       }
       
