@@ -147,8 +147,14 @@ Preferred communication style: Simple, everyday language.
 
 ### AI Services
 - **Cerebras Cloud SDK** (@cerebras/cerebras_cloud_sdk): Primary LLM provider for therapeutic conversations
-- API key configured via `CEREBRAS_API_KEY` environment variable
-- Streaming completion API for real-time responses
+  - API key configured via `CEREBRAS_API_KEY` environment variable
+  - Model: qwen-3-235b-a22b-instruct-2507
+  - Streaming completion API for real-time responses
+- **Algion API**: Fallback LLM provider when Cerebras rate limits are hit
+  - API key configured via `ALGION_API_KEY` environment variable
+  - Uses OpenAI-compatible API at https://api.algion.dev/v1
+  - Model: gpt-4o
+  - Automatically switches back to Cerebras after 5 minutes
 
 ### Database
 - **PostgreSQL**: Configured via `DATABASE_URL` environment variable (Drizzle expects this to be provisioned)

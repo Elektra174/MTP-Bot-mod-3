@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import Cerebras from "@cerebras/cerebras_cloud_sdk";
-import Groq from "groq-sdk";
+import OpenAI from "openai";
 import { chatRequestSchema, scenarios, type ChatResponse, type Message, type Session } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { selectBestScript, generateScriptGuidance, getScriptById, type MPTScript } from "./mpt-scripts";
@@ -30,12 +30,14 @@ const cerebrasClient = new Cerebras({
   apiKey: process.env.CEREBRAS_API_KEY,
 });
 
-const groqClient = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+// Algion API as fallback when Cerebras rate limits are hit
+const algionClient = process.env.ALGION_API_KEY ? new OpenAI({
+  apiKey: process.env.ALGION_API_KEY,
+  baseURL: "https://api.algion.dev/v1",
+}) : null;
 
 // Per-session fallback tracking with timestamp for periodic retry
-const sessionFallbackState = new Map<string, { useGroq: boolean; fallbackTime: number }>();
+const sessionFallbackState = new Map<string, { useFallback: boolean; fallbackTime: number }>();
 const FALLBACK_RETRY_INTERVAL = 5 * 60 * 1000; // Retry Cerebras every 5 minutes
 
 const sessions = new Map<string, Session>();
@@ -468,19 +470,24 @@ export async function registerRoutes(
       // Determine fallback state for this session
       const fallbackState = sessionFallbackState.get(session.id);
       const now = Date.now();
-      let useGroqForThisRequest = false;
+      let useFallbackForThisRequest = false;
       
-      if (fallbackState?.useGroq) {
+      if (fallbackState?.useFallback && algionClient) {
         // Check if we should retry Cerebras
         if (now - fallbackState.fallbackTime > FALLBACK_RETRY_INTERVAL) {
-          useGroqForThisRequest = false; // Try Cerebras again
+          useFallbackForThisRequest = false; // Try Cerebras again
           console.log(`Session ${session.id}: Retrying Cerebras after fallback period`);
         } else {
-          useGroqForThisRequest = true;
+          useFallbackForThisRequest = true;
         }
+      } else if (fallbackState?.useFallback && !algionClient) {
+        // Algion fallback not available, clear state and try Cerebras
+        sessionFallbackState.delete(session.id);
+        useFallbackForThisRequest = false;
+        console.log(`Session ${session.id}: Algion fallback not available, clearing fallback state`);
       }
       
-      let currentProvider = useGroqForThisRequest ? "groq" : "cerebras";
+      let currentProvider = useFallbackForThisRequest ? "algion" : "cerebras";
       
       res.write(`data: ${JSON.stringify({ 
         type: "meta", 
@@ -521,18 +528,21 @@ export async function registerRoutes(
         }
       };
       
-      const streamWithGroq = async () => {
-        const stream = await groqClient.chat.completions.create({
-          model: "groq/compound",
+      const streamWithAlgion = async () => {
+        if (!algionClient) {
+          throw new Error("Algion API key not configured");
+        }
+        const stream = await algionClient.chat.completions.create({
+          model: "gpt-4o",
           messages: apiMessages,
-          max_completion_tokens: 2000,
-          temperature: 1,
-          top_p: 1,
+          max_tokens: 2000,
+          temperature: 0.7,
+          top_p: 0.8,
           stream: true,
-        } as any);
+        });
         
         for await (const chunk of stream) {
-          const content = (chunk as any).choices[0]?.delta?.content || "";
+          const content = chunk.choices[0]?.delta?.content || "";
           if (content) {
             fullContent += content;
             res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
@@ -541,13 +551,13 @@ export async function registerRoutes(
       };
       
       try {
-        if (useGroqForThisRequest) {
-          console.log(`Session ${session.id}: Using Groq (fallback mode active)`);
-          await streamWithGroq();
+        if (useFallbackForThisRequest) {
+          console.log(`Session ${session.id}: Using Algion fallback (fallback mode active)`);
+          await streamWithAlgion();
         } else {
           await streamWithCerebras();
           // Cerebras succeeded - clear fallback state if it was set
-          if (fallbackState?.useGroq) {
+          if (fallbackState?.useFallback) {
             sessionFallbackState.delete(session.id);
             console.log(`Session ${session.id}: Cerebras recovered, clearing fallback state`);
           }
@@ -558,20 +568,24 @@ export async function registerRoutes(
                                   errorMessage.toLowerCase().includes("rate limit") ||
                                   errorMessage.toLowerCase().includes("tokens per day limit");
         
-        if (isRateLimitError && !useGroqForThisRequest) {
-          console.log(`Session ${session.id}: Cerebras rate limit hit, switching to Groq fallback`);
-          sessionFallbackState.set(session.id, { useGroq: true, fallbackTime: Date.now() });
-          currentProvider = "groq";
+        if (isRateLimitError && !useFallbackForThisRequest && algionClient) {
+          console.log(`Session ${session.id}: Cerebras rate limit hit, switching to Algion fallback`);
+          sessionFallbackState.set(session.id, { useFallback: true, fallbackTime: Date.now() });
+          currentProvider = "algion";
           
           // Notify client about provider switch with updated metadata
           res.write(`data: ${JSON.stringify({ type: "info", message: "Переключаюсь на резервный AI провайдер..." })}\n\n`);
-          res.write(`data: ${JSON.stringify({ type: "provider_switch", provider: "groq" })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: "provider_switch", provider: "algion" })}\n\n`);
           
           try {
-            await streamWithGroq();
-          } catch (groqError) {
-            throw groqError;
+            await streamWithAlgion();
+          } catch (algionError) {
+            throw algionError;
           }
+        } else if (isRateLimitError && !algionClient) {
+          console.log(`Session ${session.id}: Cerebras rate limit hit, but Algion is not configured`);
+          res.write(`data: ${JSON.stringify({ type: "error", message: "AI сервис временно перегружен. Пожалуйста, попробуйте позже." })}\n\n`);
+          throw new Error("Cerebras rate limit hit and Algion fallback not available");
         } else {
           throw apiError;
         }
