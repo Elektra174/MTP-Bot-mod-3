@@ -523,16 +523,16 @@ export async function registerRoutes(
       
       const streamWithGroq = async () => {
         const stream = await groqClient.chat.completions.create({
-          model: "llama-3.3-70b-versatile",
+          model: "groq/compound",
           messages: apiMessages,
-          max_tokens: 2000,
-          temperature: 0.7,
-          top_p: 0.8,
+          max_completion_tokens: 2000,
+          temperature: 1,
+          top_p: 1,
           stream: true,
-        });
+        } as any);
         
         for await (const chunk of stream) {
-          const content = chunk.choices[0]?.delta?.content || "";
+          const content = (chunk as any).choices[0]?.delta?.content || "";
           if (content) {
             fullContent += content;
             res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
