@@ -449,6 +449,171 @@ export function detectClientSaysIDontKnow(message: string): boolean {
   return patterns.some(pattern => lowerMessage.includes(pattern));
 }
 
+export function detectResistance(message: string): { detected: boolean; type: string | null; phrase: string | null } {
+  const resistancePatterns = [
+    { pattern: /саботирую/i, type: 'sabotage' },
+    { pattern: /борюсь с собой/i, type: 'internal_fight' },
+    { pattern: /заставляю себя/i, type: 'force_self' },
+    { pattern: /избегаю/i, type: 'avoidance' },
+    { pattern: /не могу себя заставить/i, type: 'cant_force' },
+    { pattern: /сопротивляюсь/i, type: 'resistance' },
+    { pattern: /мешаю себе/i, type: 'self_sabotage' },
+    { pattern: /откладываю/i, type: 'procrastination' },
+    { pattern: /убегаю/i, type: 'escape' },
+    { pattern: /закрываюсь/i, type: 'closing' },
+    { pattern: /прячусь/i, type: 'hiding' },
+    { pattern: /не хочу но/i, type: 'reluctance' },
+    { pattern: /должен но не/i, type: 'obligation' },
+    { pattern: /хочу но не могу/i, type: 'blocked' },
+    { pattern: /тяну время/i, type: 'delaying' },
+    { pattern: /затягиваю/i, type: 'delaying' },
+    { pattern: /медлю/i, type: 'hesitation' },
+    { pattern: /не даю себе/i, type: 'self_denial' },
+    { pattern: /блокирую себя/i, type: 'self_blocking' },
+    { pattern: /останавливаю себя/i, type: 'self_stopping' }
+  ];
+  
+  const lowerMessage = message.toLowerCase();
+  
+  for (const { pattern, type } of resistancePatterns) {
+    const match = message.match(pattern);
+    if (match) {
+      return { detected: true, type, phrase: match[0] };
+    }
+  }
+  
+  return { detected: false, type: null, phrase: null };
+}
+
+export function detectAbstractAnswer(message: string): { detected: boolean; abstractWords: string[] } {
+  const abstractPatterns = [
+    'свобода', 'свободу', 'свободой', 'свободы', 'свободен', 'свободна',
+    'радость', 'радости', 'радостью',
+    'счастье', 'счастья', 'счастьем', 'счастлив', 'счастлива',
+    'хорошо', 'нормально', 'прекрасно', 'отлично', 'замечательно',
+    'любовь', 'любви', 'любовью',
+    'покой', 'покоя', 'покоем', 'спокойствие', 'спокойствия',
+    'гармония', 'гармонии', 'гармонией',
+    'баланс', 'баланса', 'балансом',
+    'уверенность', 'уверенности', 'уверенностью',
+    'сила', 'силы', 'силой',
+    'мир', 'мира', 'миром',
+    'безопасность', 'безопасности',
+    'близость', 'близости',
+    'принятие', 'принятия',
+    'признание', 'признания',
+    'поддержка', 'поддержки',
+    'понимание', 'понимания',
+    'ценность', 'ценности'
+  ];
+  
+  const concreteIndicators = [
+    /когда .{10,}/i,
+    /в ситуации/i,
+    /например/i,
+    /в моменте когда/i,
+    /чувствую .{15,}/i,
+    /вижу как/i,
+    /слышу как/i,
+    /ощущаю .{15,}/i
+  ];
+  
+  const lowerMessage = message.toLowerCase();
+  const foundAbstract: string[] = [];
+  let abstractOccurrences = 0;
+  
+  const words = lowerMessage.split(/[\s,.!?;:]+/).filter(w => w.length > 0);
+  
+  for (const word of words) {
+    if (abstractPatterns.includes(word)) {
+      abstractOccurrences++;
+      if (!foundAbstract.includes(word)) {
+        foundAbstract.push(word);
+      }
+    }
+  }
+  
+  if (foundAbstract.length === 0) {
+    return { detected: false, abstractWords: [] };
+  }
+  
+  let hasConcreteDetails = false;
+  for (const indicator of concreteIndicators) {
+    if (indicator.test(message)) {
+      hasConcreteDetails = true;
+      break;
+    }
+  }
+  
+  const wordCount = words.length;
+  const abstractRatio = abstractOccurrences / Math.max(wordCount, 1);
+  const needsDeepening = foundAbstract.length > 0 && (!hasConcreteDetails || abstractRatio > 0.15 || wordCount <= 10);
+  
+  return { detected: needsDeepening, abstractWords: foundAbstract };
+}
+
+export function detectMovementImpulse(message: string): boolean {
+  const movementPatterns = [
+    /хочется (двигаться|подвигаться|пошевелиться)/i,
+    /хочется (взорваться|расшириться|сжаться|раскрыться)/i,
+    /импульс/i,
+    /хочется (встать|прыгнуть|побежать|танцевать)/i,
+    /тело (хочет|требует|просит)/i,
+    /хочется (распрямиться|вытянуться|сжаться)/i,
+    /хочется (кричать|орать|выть)/i,
+    /энергия (хочет|рвётся|просится)/i
+  ];
+  
+  for (const pattern of movementPatterns) {
+    if (pattern.test(message)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function getResistanceExplorationPrompt(resistanceType: string): string {
+  const prompts: Record<string, string> = {
+    'sabotage': 'СТОП. Это важно. Давай исследуем этот саботаж прямо сейчас. Если бы ты СТАЛ этой частью, которая саботирует — как бы ты себя чувствовал? Что бы она делала и ЗАЧЕМ?',
+    'internal_fight': 'СТОП. Ты говоришь о борьбе с собой — это ключевой момент. Если бы ты СТАЛ этой частью, которая борется — какую важную задачу она решает для тебя?',
+    'force_self': 'СТОП. Заставлять себя — это сигнал сопротивления. Если бы ты СТАЛ той частью, которая сопротивляется принуждению — что бы она сказала? Что она защищает?',
+    'avoidance': 'СТОП. Избегание — это важный сигнал. Если бы ты СТАЛ той частью, которая избегает — какую потребность она защищает? Что случится, если перестать избегать?',
+    'cant_force': 'СТОП. "Не могу себя заставить" — это ценная информация. Что защищает эта часть, которая не даёт тебе делать то, что "надо"?',
+    'self_sabotage': 'СТОП. Когда ты мешаешь себе — это часть тебя заботится о чём-то важном. Если бы ты СТАЛ этой частью — какую задачу она решает?',
+    'default': 'СТОП. Это важно. Давай исследуем это сопротивление прямо сейчас. Если бы ты СТАЛ этой сопротивляющейся частью — как бы ты себя чувствовал? Что она защищает?'
+  };
+  
+  return prompts[resistanceType] || prompts['default'];
+}
+
+export function getDeepeningQuestion(abstractWord: string, level: number): string {
+  const deepeningQuestions: Record<number, string[]> = {
+    1: [
+      `"${abstractWord}" — это абстракция. ${abstractWord.includes('свобод') ? 'Свобода ОТ ЧЕГО? И свобода ДЛЯ ЧЕГО?' : `Что "${abstractWord}" значит КОНКРЕТНО для тебя?`}`,
+      `А ЗАЧЕМ тебе это? Что это даст тебе глубже?`
+    ],
+    2: [
+      'А что стоит ЗА этим? К чему это тебя приведёт?',
+      'Какую ПОТРЕБНОСТЬ ты тогда реализуешь?'
+    ],
+    3: [
+      'Это твоя САМАЯ важная потребность или есть что-то ещё ВАЖНЕЕ за ней?',
+      'Что это позволяет тебе ЧУВСТВОВАТЬ или БЫТЬ?'
+    ],
+    4: [
+      'Кем ты себя будешь ОЩУЩАТЬ, когда эта потребность реализована?',
+      'Как бы ты описал это ЭТАЛОННОЕ СОСТОЯНИЕ?'
+    ]
+  };
+  
+  const questions = deepeningQuestions[level] || deepeningQuestions[4];
+  return questions[Math.floor(Math.random() * questions.length)];
+}
+
+export function getBodyBeforeImagePrompt(): string {
+  return 'Не переходи к образу — ПРОЖИВИ это телом сначала! Встань (если можешь) и ПОКАЖИ мне это движение. Позволь телу сделать его. Не думай, просто делай.';
+}
+
 export function getHelpingQuestion(stage: MPTStage, originalQuestion: string): string {
   const stageSpecificHelpers: Record<MPTStage, string[]> = {
     start_session: ['А если бы знал, с чего начать — что бы это могло быть?'],
