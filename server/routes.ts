@@ -542,7 +542,7 @@ export async function registerRoutes(
           model: "qwen-3-32b",
           messages: apiMessages,
           max_completion_tokens: 4096,
-          temperature: 0.3,
+          temperature: 0.4,
           top_p: 0.8,
           stream: true,
         });
@@ -569,7 +569,7 @@ export async function registerRoutes(
           model: "gpt-4o",
           messages: apiMessages,
           max_tokens: 4096,
-          temperature: 0.3,
+          temperature: 0.4,
           top_p: 0.8,
           stream: true,
         });
