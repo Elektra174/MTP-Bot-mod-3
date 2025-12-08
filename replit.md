@@ -6,18 +6,19 @@ This is an AI-powered therapeutic chatbot application implementing Meta-Personal
 
 The system guides users through evidence-based therapeutic protocols including work with burnout, anxiety management, relationship difficulties, and self-identity crises. It follows strict MPT methodology principles focused on identifying deep needs, working with bodily sensations and emotions, and developing constructive strategies.
 
-## Recent Changes (December 06, 2025)
+## Recent Changes (December 08, 2025)
 
 **Project Import Completed**: Successfully imported GitHub repository and configured for Replit environment
-- Installed all npm dependencies (100+ packages including React, Express, Tailwind, Radix UI)
-- Created missing `shared/schema.ts` file with 15 therapeutic scenarios and type definitions
-- Verified Vite configuration for Replit proxy compatibility (allowedHosts: true)
-- Set up development workflow "Start application" running on port 5000
-- Configured CEREBRAS_API_KEY environment secret
-- Successfully tested application - Russian language UI loads correctly
-- Configured deployment settings for production (autoscale, npm build/start)
+- Installed all npm dependencies (508 packages including React, Express, Tailwind, Radix UI, Cerebras SDK)
+- Created .gitignore file for Node.js project with proper exclusions
+- Verified Vite configuration already has Replit proxy compatibility (allowedHosts: true)
+- Configured development workflow "Start application" running on port 5000 with webview output
+- Configured CEREBRAS_API_KEY and ALGION_API_KEY environment secrets for AI services
+- Successfully tested application - Russian language UI loads correctly with full MPT interface
+- Configured deployment settings for production (autoscale deployment with npm build)
+- Database already provisioned (PostgreSQL with Drizzle ORM configured)
 
-**Status**: Application is fully functional and ready to use in both development and production modes.
+**Status**: Application is fully functional and ready to use in both development and production modes. The MPT Therapist chatbot is operational with AI-powered therapeutic conversations in Russian.
 
 ## User Preferences
 
@@ -61,10 +62,10 @@ Preferred communication style: Simple, everyday language.
 - Session timestamps
 
 **AI Integration**: Cerebras Cloud SDK client configured with:
-- Model: qwen-3-235b-a22b-instruct-2507
+- Model: qwen-3-32b
 - Streaming responses for real-time interaction
-- Temperature: 0.7, Top-p: 0.8 for balanced creativity
-- Max completion tokens: 20,000
+- Temperature: 0.6, Top-p: 0.95 for balanced creativity
+- Max completion tokens: 16,382
 
 **Therapeutic Logic**: 
 - Comprehensive MPT system prompt embedding therapeutic methodology

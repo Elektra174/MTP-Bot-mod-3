@@ -49,7 +49,7 @@ export function ChatPage({ selectedScenario, onNewSession, loadedSession, onSess
       if (selectedScenario.id !== lastScenarioIdRef.current && messages.length === 0) {
         lastScenarioIdRef.current = selectedScenario.id;
         // Send an automatic greeting message for this scenario
-        const greetingMessage = `Здравствуйте, я хотел бы поработать с темой "${selectedScenario.name}". ${selectedScenario.description}.`;
+        const greetingMessage = `Здравствуй, я хотел бы поработать с темой "${selectedScenario.name}". ${selectedScenario.description}.`;
         handleSendMessage(greetingMessage);
       }
     }

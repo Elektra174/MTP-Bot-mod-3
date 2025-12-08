@@ -43,7 +43,9 @@ const FALLBACK_RETRY_INTERVAL = 5 * 60 * 1000; // Retry Cerebras every 5 minutes
 const sessions = new Map<string, Session>();
 const sessionStates = new Map<string, SessionState>();
 
-const BASE_MPT_PRINCIPLES = `Ты — опытный МПТ-терапевт (Мета-Персональная Терапия) мужского пола по методу Александра Волынского, ведущий психологическую сессию. Всегда используй мужской род в своих ответах (например, "я рад", "я понял", а не "я рада", "я поняла"). 
+const BASE_MPT_PRINCIPLES = `ВАЖНО: Отвечай сразу, без размышлений. НЕ используй теги <think>, </think> или любые блоки размышлений. Сразу пиши ответ клиенту.
+
+Ты — опытный МПТ-терапевт (Мета-Персональная Терапия) мужского пола по методу Александра Волынского, ведущий психологическую сессию. Всегда используй мужской род в своих ответах (например, "я рад", "я понял", а не "я рада", "я поняла"). ВСЕГДА обращайся к клиенту на "ты" (неформально), НИКОГДА не используй "вы" или "Вы". При приветствии говори "Здравствуй", а не "Привет". 
 
 ## ТВОЯ ГЛАВНАЯ ЗАДАЧА:
 Ты НЕ просто интервьюируешь клиента! Ты ВЕДЁШЬ его по полному структурированному скрипту МПТ. Ты не даёшь советов, не анализируешь, не интерпретируешь — ты ведёшь клиента к обнаружению его СОБСТВЕННЫХ ресурсов и новой идентичности через вопросы.
@@ -227,7 +229,7 @@ const BASE_MPT_PRINCIPLES = `Ты — опытный МПТ-терапевт (М
 - Отражай чувства клиента, проявляй эмпатию.
 - Двигайся по этапам последовательно и медленно — по одному вопросу за раз.
 - Не торопи клиента, дай время осмыслить каждый вопрос.
-- Используй имя клиента, если он его назвал.
+- НЕ ПРИДУМЫВАЙ ИМЕНА! Используй имя клиента ТОЛЬКО если он сам его назвал. До этого обращайся без имени.
 - **ПИШИ ГРАМОТНО НА РУССКОМ ЯЗЫКЕ**: Соблюдай правила русской грамматики.
 - Твой ответ: краткое отражение (1-2 предложения) + 1 вопрос. Не пиши длинные монологи.
 
@@ -254,7 +256,7 @@ const BASE_MPT_PRINCIPLES = `Ты — опытный МПТ-терапевт (М
 — сформулировал первый шаг: [что, когда, как узнаешь]
 Хочешь выбрать практику внедрения для закрепления результата?"
 
-## ОБЯЗАТЕЛЬНАЯ МЕТОДИЧЕСКАЯ РАЗМЕТКА (ДЛЯ ОБУЧЕНИЯ СТУДЕНТОВ):
+## ОБЯЗАТЕЛЬНАЯ МЕТОДИЧЕСКАЯ РАЗМЕТКА:
 **В КАЖДОМ своём ответе** в самом начале указывай в квадратных скобках:
 1. Название текущего сценария (если определён)
 2. Текущий этап МПТ-сессии
@@ -265,9 +267,8 @@ const BASE_MPT_PRINCIPLES = `Ты — опытный МПТ-терапевт (М
 - [Сценарий: Тревожный звоночек | Этап: Телесная работа]
 - [Сценарий: День сурка | Этап: Исследование стратегии]
 - [Сценарий: не определён | Этап: Уточнение запроса]
-- [Сценарий: Внутренний критик | Этап: Метапозиция]
 
-Это помогает студентам-психологам видеть структуру МПТ-сессии и учиться работать по методу. После разметки продолжай обычный терапевтический ответ.
+После разметки продолжай обычный терапевтический ответ.
 
 ## ОБРАБОТКА НЕПОНЯТНЫХ СООБЩЕНИЙ:
 Если клиент пишет бессмыслицу, набор букв, непонятный текст или что-то неразборчивое — не пытайся это интерпретировать или придумывать смысл. Вежливо попроси уточнить: "Извини, я не совсем понял. Можешь переформулировать или написать подробнее, что ты имеешь в виду?"`;
@@ -460,7 +461,9 @@ export async function registerRoutes(
   ${sessionState.context.currentStrategy ? `- Текущая стратегия: "${sessionState.context.currentStrategy}"` : ''}
   ${sessionState.context.deepNeed ? `- Глубинная потребность: "${sessionState.context.deepNeed}"` : ''}
   ${sessionState.context.bodyLocation ? `- Телесное ощущение: "${sessionState.context.bodyLocation}"` : ''}
-  ${sessionState.context.metaphor ? `- Образ/метафора: "${sessionState.context.metaphor}"` : ''}`;
+  ${sessionState.context.metaphor ? `- Образ/метафора: "${sessionState.context.metaphor}"` : ''}
+
+/no_think`;
       
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -502,6 +505,32 @@ export async function registerRoutes(
       })}\n\n`);
       
       let fullContent = "";
+      let rawContent = "";
+      let insideThinkBlock = false;
+      
+      const filterThinkTags = (content: string): string => {
+        let result = "";
+        let i = 0;
+        while (i < content.length) {
+          if (!insideThinkBlock) {
+            if (content.slice(i).startsWith("<think>")) {
+              insideThinkBlock = true;
+              i += 7;
+            } else {
+              result += content[i];
+              i++;
+            }
+          } else {
+            if (content.slice(i).startsWith("</think>")) {
+              insideThinkBlock = false;
+              i += 8;
+            } else {
+              i++;
+            }
+          }
+        }
+        return result;
+      };
       
       const apiMessages = [
         { role: "system" as const, content: contextualPrompt },
@@ -510,10 +539,10 @@ export async function registerRoutes(
       
       const streamWithCerebras = async () => {
         const stream = await cerebrasClient.chat.completions.create({
-          model: "qwen-3-235b-a22b-instruct-2507",
+          model: "qwen-3-32b",
           messages: apiMessages,
-          max_tokens: 2000,
-          temperature: 0.7,
+          max_completion_tokens: 4096,
+          temperature: 0.3,
           top_p: 0.8,
           stream: true,
         });
@@ -522,8 +551,12 @@ export async function registerRoutes(
           const chunkData = chunk as { choices: Array<{ delta?: { content?: string } }> };
           const content = chunkData.choices[0]?.delta?.content || "";
           if (content) {
-            fullContent += content;
-            res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
+            rawContent += content;
+            const filtered = filterThinkTags(content);
+            if (filtered) {
+              fullContent += filtered;
+              res.write(`data: ${JSON.stringify({ type: "chunk", content: filtered })}\n\n`);
+            }
           }
         }
       };
@@ -535,8 +568,8 @@ export async function registerRoutes(
         const stream = await algionClient.chat.completions.create({
           model: "gpt-4o",
           messages: apiMessages,
-          max_tokens: 2000,
-          temperature: 0.7,
+          max_tokens: 4096,
+          temperature: 0.3,
           top_p: 0.8,
           stream: true,
         });
@@ -544,8 +577,12 @@ export async function registerRoutes(
         for await (const chunk of stream) {
           const content = chunk.choices[0]?.delta?.content || "";
           if (content) {
-            fullContent += content;
-            res.write(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`);
+            rawContent += content;
+            const filtered = filterThinkTags(content);
+            if (filtered) {
+              fullContent += filtered;
+              res.write(`data: ${JSON.stringify({ type: "chunk", content: filtered })}\n\n`);
+            }
           }
         }
       };
