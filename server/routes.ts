@@ -27,9 +27,21 @@ import {
   IMPLEMENTATION_PRACTICES,
   MPT_STAGE_CONFIG,
   REQUEST_TYPE_SCRIPTS,
+  RESISTANCE_EXPLORATION_PROTOCOL,
+  getFullResistanceExplorationStep,
+  updateResistanceExplorationState,
+  isResistanceFullyExplored,
+  updateAbstractAnswerState,
+  needsMoreDeepening,
+  BODYWORK_SEQUENCE,
+  getNextBodyworkQuestion,
+  updateBodyworkSequence,
+  isBodyworkComplete,
+  canTransitionToMetaphor,
   type SessionState,
   type TherapyContext,
-  type MPTStage
+  type MPTStage,
+  type BodyworkSequenceData
 } from "./session-state";
 
 const cerebrasClient = new Cerebras({
@@ -501,19 +513,104 @@ export async function registerRoutes(
       }
       
       if (resistanceDetection.detected) {
-        const resistancePrompt = getResistanceExplorationPrompt(resistanceDetection.type || 'default');
-        contextualPrompt += `\n\n## 🔴 ОБНАРУЖЕНО СОПРОТИВЛЕНИЕ! ПРИОРИТЕТ №1!\nКлиент сказал: "${resistanceDetection.phrase}"\n\n**НЕМЕДЛЕННО ИСПОЛЬЗУЙ ПРОТОКОЛ РАБОТЫ С СОПРОТИВЛЕНИЕМ:**\n${resistancePrompt}\n\nНЕ продолжай обычный скрипт! Исследуй сопротивление прямо сейчас!`;
+        if (!sessionState.context.resistanceData.detected) {
+          sessionState.context.resistanceData.detected = true;
+          sessionState.context.resistanceData.type = resistanceDetection.type;
+          sessionState.context.resistanceData.phrase = resistanceDetection.phrase;
+        }
+        
+        const currentStep = sessionState.context.resistanceData.explorationStep + 1;
+        const nextStep = Math.min(currentStep, 6);
+        const stepQuestion = getFullResistanceExplorationStep(nextStep, resistanceDetection.type || 'default');
+        
+        contextualPrompt += `\n\n## 🔴 ОБНАРУЖЕНО СОПРОТИВЛЕНИЕ! ПРИОРИТЕТ №1!
+Клиент сказал: "${resistanceDetection.phrase}"
+Тип сопротивления: ${resistanceDetection.type || 'общее'}
+
+**ПРОТОКОЛ РАБОТЫ С СОПРОТИВЛЕНИЕМ (6 ШАГОВ) — Текущий шаг: ${nextStep}/6**
+
+Шаг 1 (СТОП): ${RESISTANCE_EXPLORATION_PROTOCOL.step1_stop.name} ${sessionState.context.resistanceData.stoppedAndExplored ? '✓' : ''}
+Шаг 2 (СТАТЬ): ${RESISTANCE_EXPLORATION_PROTOCOL.step2_become.name} ${sessionState.context.resistanceData.becameResistingPart ? '✓' : ''}
+Шаг 3 (ЗАЧЕМ): ${RESISTANCE_EXPLORATION_PROTOCOL.step3_purpose.name} ${sessionState.context.resistanceData.foundProtectedNeed ? '✓' : ''}
+Шаг 4 (ЗАЩИТА): ${RESISTANCE_EXPLORATION_PROTOCOL.step4_protection.name}
+Шаг 5 (ЧТО ЕСЛИ): ${RESISTANCE_EXPLORATION_PROTOCOL.step5_consequences.name} ${sessionState.context.resistanceData.exploredWhatHappensWithout ? '✓' : ''}
+Шаг 6 (АЛЬТЕРНАТИВА): ${RESISTANCE_EXPLORATION_PROTOCOL.step6_alternative.name} ${sessionState.context.resistanceData.foundAlternativeWay ? '✓' : ''}
+
+**ТВОЙ СЛЕДУЮЩИЙ ВОПРОС:** ${stepQuestion}
+
+НЕ продолжай обычный скрипт! Пройди ВСЕ 6 шагов прежде чем двигаться дальше!`;
+
+        const newState = updateResistanceExplorationState(sessionState, nextStep);
+        Object.assign(sessionState, newState);
       }
       
       if (abstractDetection.detected && abstractDetection.abstractWords.length > 0) {
         const abstractWord = abstractDetection.abstractWords[0];
-        const deepeningQ = getDeepeningQuestion(abstractWord, 1);
-        contextualPrompt += `\n\n## 🔴 ОБНАРУЖЕН АБСТРАКТНЫЙ ОТВЕТ! УГЛУБИ!\nКлиент ответил абстракцией: "${abstractWord}"\n\n**НЕ ПРИНИМАЙ! КОНКРЕТИЗИРУЙ:**\n${deepeningQ}\n\nУГЛУБЛЯЙ минимум 3 уровня: ЗАЧЕМ → ЧТО ДАСТ → КАКУЮ ПОТРЕБНОСТЬ → КЕМ БУДЕШЬ ОЩУЩАТЬ`;
+        const currentLevel = sessionState.context.abstractAnswerData.currentDepthLevel + 1;
+        const nextLevel = Math.min(currentLevel, 4);
+        const deepeningQ = getDeepeningQuestion(abstractWord, nextLevel);
+        
+        const newState = updateAbstractAnswerState(sessionState, abstractDetection.abstractWords, nextLevel);
+        Object.assign(sessionState, newState);
+        
+        contextualPrompt += `\n\n## 🔴 ОБНАРУЖЕН АБСТРАКТНЫЙ ОТВЕТ! УГЛУБИ! (Уровень ${nextLevel}/4)
+Клиент ответил абстракцией: "${abstractWord}"
+История углубления: ${sessionState.context.abstractAnswerData.deepeningHistory.join(' → ') || 'начало'}
+
+**УРОВНИ УГЛУБЛЕНИЯ (нужно пройти минимум 3):**
+Уровень 1: ЗАЧЕМ тебе это? Что это даст? ${nextLevel > 1 ? '✓' : '→'}
+Уровень 2: Что стоит ЗА этим? Какую ПОТРЕБНОСТЬ реализуешь? ${nextLevel > 2 ? '✓' : (nextLevel === 2 ? '→' : '')}
+Уровень 3: Это САМАЯ важная потребность? Есть ли что-то ВАЖНЕЕ? ${nextLevel > 3 ? '✓' : (nextLevel === 3 ? '→' : '')}
+Уровень 4: КЕМ ты себя будешь ОЩУЩАТЬ? ЭТАЛОННОЕ СОСТОЯНИЕ. ${nextLevel === 4 ? '→' : ''}
+
+**ТВОЙ ВОПРОС:** ${deepeningQ}
+
+НЕ ПРИНИМАЙ абстракцию! Углубляй до КОНКРЕТНОГО СОСТОЯНИЯ или ОЩУЩЕНИЯ!`;
       }
       
       if (movementImpulseDetected && sessionState.currentStage === 'bodywork') {
         const bodyPrompt = getBodyBeforeImagePrompt();
-        contextualPrompt += `\n\n## 🔴 ОБНАРУЖЕН ИМПУЛЬС К ДВИЖЕНИЮ! НЕ ПЕРЕХОДИ К ОБРАЗУ!\nКлиент описывает импульс к движению.\n\n**СНАЧАЛА ПРОЖИВИ ДВИЖЕНИЕ ТЕЛОМ:**\n${bodyPrompt}\n\nТолько ПОСЛЕ того как клиент сделал движение и описал изменения — можно переходить к образу!`;
+        contextualPrompt += `\n\n## 🔴 ОБНАРУЖЕН ИМПУЛЬС К ДВИЖЕНИЮ! НЕ ПЕРЕХОДИ К ОБРАЗУ!
+Клиент описывает импульс к движению.
+
+**СНАЧАЛА ПРОЖИВИ ДВИЖЕНИЕ ТЕЛОМ:**
+${bodyPrompt}
+
+**ОБЯЗАТЕЛЬНАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ:**
+1. Позволь телу сделать движение
+2. Спроси "Что происходит? Что изменилось?"
+3. Спроси "ДОСТАТОЧНО ли этого движения, или хочется ЕЩЁ?"
+4. ТОЛЬКО после завершения движения переходи к образу
+
+Только ПОСЛЕ того как клиент сделал движение и описал изменения — можно переходить к образу!`;
+      }
+      
+      if (sessionState.currentStage === 'bodywork' && !isBodyworkComplete(sessionState)) {
+        const nextBodyworkQ = getNextBodyworkQuestion(sessionState);
+        if (nextBodyworkQ) {
+          const bs = sessionState.context.bodyworkSequence;
+          contextualPrompt += `\n\n## ТЕЛЕСНАЯ РАБОТА — СТРОГАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ:
+**Прогресс:** 
+- Локализация: ${bs.locationAsked ? '✓' : '○'}
+- Размер: ${bs.sizeAsked ? '✓' : '○'}
+- Форма: ${bs.shapeAsked ? '✓' : '○'}
+- Плотность: ${bs.densityAsked ? '✓' : '○'}
+- Температура: ${bs.temperatureAsked ? '✓' : '○'}
+- Движение: ${bs.movementAsked ? '✓' : '○'}
+- Импульс: ${bs.impulseAsked ? '✓' : '○'}
+- Движение выполнено: ${bs.movementDone ? '✓' : '○'}
+- Завершённость проверена: ${bs.movementCompletionChecked ? '✓' : '○'}
+
+**СЛЕДУЮЩИЙ ОБЯЗАТЕЛЬНЫЙ ВОПРОС:** ${nextBodyworkQ}
+
+НЕЛЬЗЯ переходить к ОБРАЗУ пока движение не выполнено и не проверена завершённость!`;
+        }
+      }
+      
+      if (sessionState.currentStage === 'metaphor' && !canTransitionToMetaphor(sessionState)) {
+        contextualPrompt += `\n\n## ⚠️ ВНИМАНИЕ! РАНО ДЛЯ ОБРАЗА!
+Клиент ещё не выполнил движение или не проверена завершённость движения.
+ВЕРНИ клиента к телесной работе: "Давай сначала позволим телу выразить это движение. Что хочется сделать телом?"`;
       }
       
       if (session.scenarioId && session.scenarioName) {

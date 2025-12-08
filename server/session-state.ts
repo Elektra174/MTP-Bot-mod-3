@@ -240,6 +240,42 @@ export interface IntegrationData {
   integratedState: string | null;
 }
 
+export interface ResistanceExplorationData {
+  detected: boolean;
+  type: string | null;
+  phrase: string | null;
+  explorationStep: number;
+  stoppedAndExplored: boolean;
+  becameResistingPart: boolean;
+  foundProtectedNeed: boolean;
+  exploredWhatHappensWithout: boolean;
+  foundAlternativeWay: boolean;
+  fullyExplored: boolean;
+}
+
+export interface AbstractAnswerData {
+  detected: boolean;
+  abstractWords: string[];
+  currentDepthLevel: number;
+  maxDepthReached: boolean;
+  fromWord: string | null;
+  toWord: string | null;
+  deepeningHistory: string[];
+}
+
+export interface BodyworkSequenceData {
+  locationAsked: boolean;
+  sizeAsked: boolean;
+  shapeAsked: boolean;
+  densityAsked: boolean;
+  temperatureAsked: boolean;
+  movementAsked: boolean;
+  impulseAsked: boolean;
+  movementDone: boolean;
+  movementCompletionChecked: boolean;
+  readyForMetaphor: boolean;
+}
+
 export interface TherapyContext {
   clientName: string | null;
   currentGoal: string | null;
@@ -260,6 +296,9 @@ export interface TherapyContext {
   metaphorData: MetaphorData;
   metaPositionData: MetaPositionData;
   integrationData: IntegrationData;
+  resistanceData: ResistanceExplorationData;
+  abstractAnswerData: AbstractAnswerData;
+  bodyworkSequence: BodyworkSequenceData;
 }
 
 export interface SessionState {
@@ -586,6 +625,142 @@ export function getResistanceExplorationPrompt(resistanceType: string): string {
   return prompts[resistanceType] || prompts['default'];
 }
 
+export const RESISTANCE_EXPLORATION_PROTOCOL = {
+  step1_stop: {
+    name: 'СТОП и признание',
+    prompt: 'СТОП. Это важно. Давай исследуем это сопротивление прямо сейчас — сопротивление это ЗОЛОТО!',
+    question: 'Ты говоришь о сопротивлении. Это очень ценная информация. Давай остановимся и исследуем это.'
+  },
+  step2_become: {
+    name: 'Становление сопротивляющейся частью',
+    prompt: 'Клиент должен СТАТЬ сопротивляющейся частью',
+    questions: [
+      'Если бы ты прямо сейчас СТАЛ этой частью, которая {resistance_type} — как бы ты себя чувствовал?',
+      'Представь, что ты — это та часть, которая {resistance_type}. Что ты ощущаешь? Какие эмоции?',
+      'Если бы ты мог СТАТЬ этой сопротивляющейся частью полностью — как бы это было? Что бы ты делал?'
+    ]
+  },
+  step3_purpose: {
+    name: 'Поиск задачи и намерения',
+    prompt: 'Найти ЗАЧЕМ эта часть делает то, что делает',
+    questions: [
+      'Что бы эта часть делала и ЗАЧЕМ? Какую важную задачу она решает для тебя?',
+      'Какую цель преследует эта часть? Почему ей важно так себя вести?',
+      'Если бы эта часть могла говорить — что бы она сказала о том, зачем она нужна?'
+    ]
+  },
+  step4_protection: {
+    name: 'Обнаружение защищаемой потребности',
+    prompt: 'Что ЗАЩИЩАЕТ эта часть',
+    questions: [
+      'Что она защищает? Какую важную потребность?',
+      'От чего эта часть тебя оберегает? Что было бы, если бы её не было?',
+      'Какую ценность или потребность эта часть охраняет?'
+    ]
+  },
+  step5_consequences: {
+    name: 'Исследование последствий',
+    prompt: 'Что случится, если перестать сопротивляться',
+    questions: [
+      'Если бы можно было перестать {resistance_type} — что тогда произойдёт?',
+      'Что случится, если эта часть перестанет делать то, что делает?',
+      'Чего ты боишься или избегаешь, если эта часть перестанет работать?'
+    ]
+  },
+  step6_alternative: {
+    name: 'Поиск альтернативного способа',
+    prompt: 'Найти другой способ удовлетворить потребность',
+    questions: [
+      'Как можно удовлетворить эту потребность ПО-ДРУГОМУ?',
+      'Какой другой способ мог бы защитить то, что важно, но без сопротивления?',
+      'Если бы эта потребность могла реализоваться иначе — как бы это выглядело?'
+    ]
+  }
+};
+
+export function getFullResistanceExplorationStep(step: number, resistanceType: string): string {
+  const steps = RESISTANCE_EXPLORATION_PROTOCOL;
+  const typeLabels: Record<string, string> = {
+    'sabotage': 'саботирует',
+    'internal_fight': 'борется',
+    'force_self': 'сопротивляется принуждению',
+    'avoidance': 'избегает',
+    'cant_force': 'не даёт заставить себя',
+    'self_sabotage': 'мешает себе',
+    'procrastination': 'откладывает',
+    'closing': 'закрывается',
+    'hiding': 'прячется',
+    'default': 'сопротивляется'
+  };
+  
+  const typeLabel = typeLabels[resistanceType] || typeLabels['default'];
+  
+  switch (step) {
+    case 1:
+      return steps.step1_stop.question;
+    case 2:
+      const q2 = steps.step2_become.questions[0];
+      return q2.replace('{resistance_type}', typeLabel);
+    case 3:
+      return steps.step3_purpose.questions[0];
+    case 4:
+      return steps.step4_protection.questions[0];
+    case 5:
+      const q5 = steps.step5_consequences.questions[0];
+      return q5.replace('{resistance_type}', typeLabel);
+    case 6:
+      return steps.step6_alternative.questions[0];
+    default:
+      return 'Сопротивление исследовано. Теперь давай двинемся дальше.';
+  }
+}
+
+export function updateResistanceExplorationState(state: SessionState, step: number): SessionState {
+  const newResistanceData = { ...state.context.resistanceData };
+  
+  switch (step) {
+    case 1:
+      newResistanceData.stoppedAndExplored = true;
+      newResistanceData.explorationStep = 1;
+      break;
+    case 2:
+      newResistanceData.becameResistingPart = true;
+      newResistanceData.explorationStep = 2;
+      break;
+    case 3:
+    case 4:
+      newResistanceData.foundProtectedNeed = true;
+      newResistanceData.explorationStep = step;
+      break;
+    case 5:
+      newResistanceData.exploredWhatHappensWithout = true;
+      newResistanceData.explorationStep = 5;
+      break;
+    case 6:
+      newResistanceData.foundAlternativeWay = true;
+      newResistanceData.explorationStep = 6;
+      newResistanceData.fullyExplored = true;
+      break;
+  }
+  
+  return {
+    ...state,
+    context: {
+      ...state.context,
+      resistanceData: newResistanceData
+    }
+  };
+}
+
+export function isResistanceFullyExplored(state: SessionState): boolean {
+  const rd = state.context.resistanceData;
+  return rd.stoppedAndExplored && 
+         rd.becameResistingPart && 
+         rd.foundProtectedNeed && 
+         rd.exploredWhatHappensWithout && 
+         rd.foundAlternativeWay;
+}
+
 export function getDeepeningQuestion(abstractWord: string, level: number): string {
   const deepeningQuestions: Record<number, string[]> = {
     1: [
@@ -610,8 +785,121 @@ export function getDeepeningQuestion(abstractWord: string, level: number): strin
   return questions[Math.floor(Math.random() * questions.length)];
 }
 
+export function updateAbstractAnswerState(state: SessionState, abstractWords: string[], level: number): SessionState {
+  const newAbstractData = { ...state.context.abstractAnswerData };
+  newAbstractData.detected = true;
+  newAbstractData.abstractWords = abstractWords;
+  newAbstractData.currentDepthLevel = level;
+  newAbstractData.deepeningHistory.push(`Level ${level}: ${abstractWords.join(', ')}`);
+  if (level >= 4) {
+    newAbstractData.maxDepthReached = true;
+  }
+  
+  return {
+    ...state,
+    context: {
+      ...state.context,
+      abstractAnswerData: newAbstractData
+    }
+  };
+}
+
+export function needsMoreDeepening(state: SessionState): boolean {
+  const ad = state.context.abstractAnswerData;
+  return ad.detected && !ad.maxDepthReached && ad.currentDepthLevel < 4;
+}
+
 export function getBodyBeforeImagePrompt(): string {
   return 'Не переходи к образу — ПРОЖИВИ это телом сначала! Встань (если можешь) и ПОКАЖИ мне это движение. Позволь телу сделать его. Не думай, просто делай.';
+}
+
+export const BODYWORK_SEQUENCE = {
+  step1_location: {
+    question: 'Где в ТЕЛЕ ты ощущаешь эту потребность? Есть ли какое-то ощущение, связанное с ней?',
+    key: 'locationAsked'
+  },
+  step2_size: {
+    question: 'Какого РАЗМЕРА это ощущение? Большое, маленькое, среднее?',
+    key: 'sizeAsked'
+  },
+  step3_shape: {
+    question: 'Какой ФОРМЫ оно? На что похоже по форме?',
+    key: 'shapeAsked'
+  },
+  step4_density: {
+    question: 'Какой ПЛОТНОСТИ? Плотное, лёгкое, рыхлое, текучее, газообразное?',
+    key: 'densityAsked'
+  },
+  step5_temperature: {
+    question: 'Какая у него ТЕМПЕРАТУРА? Тёплое, холодное, горячее, нейтральное?',
+    key: 'temperatureAsked'
+  },
+  step6_movement: {
+    question: 'Есть ли у него ДВИЖЕНИЕ? Если да — куда оно направлено? Пульсирует, расширяется, сжимается?',
+    key: 'movementAsked'
+  },
+  step7_impulse: {
+    question: 'Есть ли импульс ПОДВИГАТЬСЯ? Какое движение хотелось бы сделать телу?',
+    key: 'impulseAsked'
+  },
+  step8_do_movement: {
+    question: 'Позволь телу сделать это движение. Не думай, просто делай. Что происходит?',
+    key: 'movementDone'
+  },
+  step9_completion_check: {
+    question: 'ДОСТАТОЧНО ли этого движения, или хочется ЕЩЁ?',
+    key: 'movementCompletionChecked'
+  }
+};
+
+export function getNextBodyworkQuestion(state: SessionState): string | null {
+  const bs = state.context.bodyworkSequence;
+  
+  if (!bs.locationAsked) return BODYWORK_SEQUENCE.step1_location.question;
+  if (!bs.sizeAsked) return BODYWORK_SEQUENCE.step2_size.question;
+  if (!bs.shapeAsked) return BODYWORK_SEQUENCE.step3_shape.question;
+  if (!bs.densityAsked) return BODYWORK_SEQUENCE.step4_density.question;
+  if (!bs.temperatureAsked) return BODYWORK_SEQUENCE.step5_temperature.question;
+  if (!bs.movementAsked) return BODYWORK_SEQUENCE.step6_movement.question;
+  if (!bs.impulseAsked) return BODYWORK_SEQUENCE.step7_impulse.question;
+  if (!bs.movementDone) return BODYWORK_SEQUENCE.step8_do_movement.question;
+  if (!bs.movementCompletionChecked) return BODYWORK_SEQUENCE.step9_completion_check.question;
+  
+  return null;
+}
+
+export function updateBodyworkSequence(state: SessionState, stepKey: keyof BodyworkSequenceData): SessionState {
+  const newBodyworkSequence = { ...state.context.bodyworkSequence };
+  (newBodyworkSequence as Record<string, boolean>)[stepKey] = true;
+  
+  const isReadyForMetaphor = newBodyworkSequence.movementDone && newBodyworkSequence.movementCompletionChecked;
+  newBodyworkSequence.readyForMetaphor = isReadyForMetaphor;
+  
+  return {
+    ...state,
+    context: {
+      ...state.context,
+      bodyworkSequence: newBodyworkSequence
+    }
+  };
+}
+
+export function isBodyworkComplete(state: SessionState): boolean {
+  const bs = state.context.bodyworkSequence;
+  return bs.locationAsked && 
+         bs.sizeAsked && 
+         bs.shapeAsked && 
+         bs.densityAsked && 
+         bs.temperatureAsked && 
+         bs.movementAsked && 
+         bs.impulseAsked && 
+         bs.movementDone && 
+         bs.movementCompletionChecked;
+}
+
+export function canTransitionToMetaphor(state: SessionState): boolean {
+  const bs = state.context.bodyworkSequence;
+  return bs.movementDone && bs.movementCompletionChecked;
 }
 
 export function getHelpingQuestion(stage: MPTStage, originalQuestion: string): string {
@@ -819,6 +1107,39 @@ export function createInitialSessionState(): SessionState {
         newFeeling: null,
         movementDone: false,
         integratedState: null
+      },
+      resistanceData: {
+        detected: false,
+        type: null,
+        phrase: null,
+        explorationStep: 0,
+        stoppedAndExplored: false,
+        becameResistingPart: false,
+        foundProtectedNeed: false,
+        exploredWhatHappensWithout: false,
+        foundAlternativeWay: false,
+        fullyExplored: false
+      },
+      abstractAnswerData: {
+        detected: false,
+        abstractWords: [],
+        currentDepthLevel: 0,
+        maxDepthReached: false,
+        fromWord: null,
+        toWord: null,
+        deepeningHistory: []
+      },
+      bodyworkSequence: {
+        locationAsked: false,
+        sizeAsked: false,
+        shapeAsked: false,
+        densityAsked: false,
+        temperatureAsked: false,
+        movementAsked: false,
+        impulseAsked: false,
+        movementDone: false,
+        movementCompletionChecked: false,
+        readyForMetaphor: false
       }
     },
     requestType: null,
