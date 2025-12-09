@@ -26,9 +26,9 @@ import {
   type MPTStage
 } from "./session-state";
 
-const cerebrasClient = new Cerebras({
+const cerebrasClient = process.env.CEREBRAS_API_KEY ? new Cerebras({
   apiKey: process.env.CEREBRAS_API_KEY,
-});
+}) : null;
 
 // Algion API as fallback when Cerebras rate limits are hit
 const algionClient = process.env.ALGION_API_KEY ? new OpenAI({
@@ -444,7 +444,8 @@ export async function registerRoutes(
       }
       
       if (sessionState.requestType && sessionState.requestType !== 'general') {
-        contextualPrompt += `\n\n## ТИП ЗАПРОСА КЛИЕНТА: ${sessionState.requestType}\nРекомендуемый подход: ${REQUEST_TYPE_SCRIPTS[sessionState.requestType]}`;
+        const scriptInfo = REQUEST_TYPE_SCRIPTS[sessionState.requestType];
+        contextualPrompt += `\n\n## ТИП ЗАПРОСА КЛИЕНТА: ${sessionState.requestType}\nРекомендуемый скрипт: ${scriptInfo.scriptId}\nПодход: ${scriptInfo.description}`;
       }
       
       if (sessionState.currentStage === 'finish') {
@@ -538,6 +539,9 @@ export async function registerRoutes(
       ];
       
       const streamWithCerebras = async () => {
+        if (!cerebrasClient) {
+          throw new Error("CEREBRAS_API_KEY not configured");
+        }
         const stream = await cerebrasClient.chat.completions.create({
           model: "qwen-3-32b",
           messages: apiMessages,
@@ -588,8 +592,12 @@ export async function registerRoutes(
       };
       
       try {
-        if (useFallbackForThisRequest) {
-          console.log(`Session ${session.id}: Using Algion fallback (fallback mode active)`);
+        if (!cerebrasClient && !algionClient) {
+          throw new Error("No AI provider configured. Please set CEREBRAS_API_KEY or ALGION_API_KEY.");
+        }
+        
+        if (useFallbackForThisRequest || !cerebrasClient) {
+          console.log(`Session ${session.id}: Using Algion ${!cerebrasClient ? '(Cerebras not configured)' : '(fallback mode active)'}`);
           await streamWithAlgion();
         } else {
           await streamWithCerebras();

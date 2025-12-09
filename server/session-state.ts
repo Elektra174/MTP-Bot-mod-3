@@ -347,19 +347,19 @@ export const REQUEST_TYPE_KEYWORDS: Record<RequestType, string[]> = {
   general: []
 };
 
-export const REQUEST_TYPE_SCRIPTS: Record<RequestType, string> = {
-  fear_anxiety: 'Работа со страхом и тревогой через телесные ощущения и образ безопасности',
-  procrastination: 'Исследование вторичной выгоды и скрытой потребности за откладыванием',
-  relationships: 'Работа с проекциями и потребностями в отношениях',
-  self_worth: 'Интеграция светлой тени и восстановление самоценности',
-  burnout: 'Поиск глубинной потребности за истощением',
-  lost_desires: 'Восстановление контакта с желаниями через тело',
-  role_conflict: 'Диалог частей и поиск интегрирующего решения',
-  resistance: 'Исследование конструктивной цели сопротивления',
-  trauma: 'Бережная работа с травматическим опытом через ресурсный образ',
-  identity: 'Исследование идентичности через метапозицию',
-  psychosomatic: 'Работа с телесными блокировками и высвобождение энергии',
-  general: 'Универсальный скрипт исследования стратегии'
+export const REQUEST_TYPE_SCRIPTS: Record<RequestType, { scriptId: string; description: string }> = {
+  fear_anxiety: { scriptId: 'fear-research', description: 'Исследование страха — работа с негативным прогнозом и создание ресурсного образа' },
+  procrastination: { scriptId: 'strategy-research', description: 'Исследование стратегии — поиск позитивной цели за откладыванием' },
+  relationships: { scriptId: 'shadow-desire', description: 'Теневое желание — работа с проекциями на другого человека' },
+  self_worth: { scriptId: 'light-shadow', description: 'Светлая тень — интеграция восхищающих качеств как своих' },
+  burnout: { scriptId: 'strategy-research', description: 'Исследование стратегии — поиск глубинной потребности за истощением' },
+  lost_desires: { scriptId: 'motivation-change', description: 'Изменение мотивации — восстановление контакта с эталонным состоянием' },
+  role_conflict: { scriptId: 'authorship-conflict-resolution', description: 'Возвращение авторства — диалог частей через телесное высвобождение' },
+  resistance: { scriptId: 'strategy-research', description: 'Исследование стратегии — конструктивная цель сопротивления' },
+  trauma: { scriptId: 'decision-point-identity', description: 'Точка решения — бережная работа через немедленный доступ к состоянию решения' },
+  identity: { scriptId: 'archetype-research', description: 'Исследование архетипа — поиск глубинной идентичности через ресурсные образы' },
+  psychosomatic: { scriptId: 'body-blockage', description: 'Исследование телесной блокировки — высвобождение заблокированной энергии' },
+  general: { scriptId: 'strategy-research', description: 'Исследование стратегии — универсальный скрипт для любого запроса' }
 };
 
 export const AUTHORSHIP_TRANSFORMATIONS: Array<{pattern: RegExp, transform: string}> = [
@@ -669,7 +669,7 @@ export function createInitialSessionState(): SessionState {
 
 export function generateStagePrompt(state: SessionState): string {
   const config = MPT_STAGE_CONFIG[state.currentStage];
-  const requestTypeScript = state.requestType ? REQUEST_TYPE_SCRIPTS[state.requestType] : '';
+  const requestTypeScript = state.requestType ? REQUEST_TYPE_SCRIPTS[state.requestType].description : '';
   
   let prompt = `
 ## ТЕКУЩИЙ ЭТАП МПТ-СЕССИИ: ${config.russianName}
