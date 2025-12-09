@@ -8,24 +8,17 @@ The system guides users through evidence-based therapeutic protocols including w
 
 ## Recent Changes (December 08, 2025)
 
-**MPT Methodology Improvements**: Enhanced the bot to work as a real MPT therapist based on detailed session analysis
-- Added 5 key principles for real MPT therapy: depth analysis, resistance handling, body work sequence, process-focused work, authorship return
-- Implemented **Resistance Detection Protocol**: Bot now detects sabotage, internal fight, avoidance patterns and immediately stops to explore them
-- Implemented **Abstract Answer Detection**: Bot no longer accepts superficial answers like "freedom", "joy", "happiness" - forces deepening with circular questions
-- Implemented **Movement Impulse Detection**: Ensures body work is completed before moving to metaphor/image creation
-- Added **Stage Transition Pause**: Bot pauses stage transitions when resistance/abstract answers are detected to fully explore them
-- New functions in session-state.ts: detectResistance(), detectAbstractAnswer(), detectMovementImpulse(), getResistanceExplorationPrompt(), getDeepeningQuestion()
-- Dynamic contextual prompts now guide the AI to follow proper MPT methodology in real-time
-
-**Previous: Project Import Completed**
+**Project Import Completed**: Successfully imported GitHub repository and configured for Replit environment
 - Installed all npm dependencies (508 packages including React, Express, Tailwind, Radix UI, Cerebras SDK)
+- Created .gitignore file for Node.js project with proper exclusions
+- Verified Vite configuration already has Replit proxy compatibility (allowedHosts: true)
 - Configured development workflow "Start application" running on port 5000 with webview output
 - Configured CEREBRAS_API_KEY and ALGION_API_KEY environment secrets for AI services
 - Successfully tested application - Russian language UI loads correctly with full MPT interface
 - Configured deployment settings for production (autoscale deployment with npm build)
 - Database already provisioned (PostgreSQL with Drizzle ORM configured)
 
-**Status**: Application is fully functional with improved MPT methodology. The chatbot now properly explores resistance, deepens abstract answers, and follows the correct Body → Movement → Image → Metaposition sequence.
+**Status**: Application is fully functional and ready to use in both development and production modes. The MPT Therapist chatbot is operational with AI-powered therapeutic conversations in Russian.
 
 ## User Preferences
 
