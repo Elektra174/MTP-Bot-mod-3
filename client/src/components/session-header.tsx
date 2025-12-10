@@ -25,7 +25,7 @@ export function SessionHeader({ scenarioName, phase, onNewSession }: SessionHead
       <div className="flex items-center gap-1 sm:gap-3 min-w-0 flex-1">
         <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink-0">
           <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-primary flex-shrink-0" />
-          <span className="font-semibold text-xs sm:text-lg truncate max-w-[80px] sm:max-w-none">
+          <span className="font-semibold text-xs sm:text-lg whitespace-nowrap">
             {scenarioName || "МПТ Терапевт"}
           </span>
         </div>
