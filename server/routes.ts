@@ -43,6 +43,188 @@ const FALLBACK_RETRY_INTERVAL = 5 * 60 * 1000; // Retry Cerebras every 5 minutes
 const sessions = new Map<string, Session>();
 const sessionStates = new Map<string, SessionState>();
 
+// Bot mode types
+type BotMode = 'therapist' | 'educator' | 'practice_client' | 'supervisor' | 'chat';
+
+// Mode detection based on message content
+function detectBotMode(message: string, conversationHistory: Array<{role: string, content: string}>): BotMode {
+  const lowerMessage = message.toLowerCase();
+  const lastMessages = conversationHistory.slice(-4).map(m => m.content.toLowerCase()).join(' ');
+  const fullContext = lowerMessage + ' ' + lastMessages;
+  
+  // Practice mode - user wants to be the therapist
+  const practiceKeywords = [
+    'хочу попрактиковаться', 'потренироваться', 'давай я буду терапевтом', 
+    'будь клиентом', 'стань клиентом', 'выступи в роли клиента',
+    'я терапевт', 'буду вести сессию', 'практика терапии', 'поиграем в терапию',
+    'режим практики', 'режим клиента', 'я хочу практиковать'
+  ];
+  if (practiceKeywords.some(k => fullContext.includes(k))) {
+    return 'practice_client';
+  }
+  
+  // Supervisor mode - session analysis
+  const supervisorKeywords = [
+    'разбери сессию', 'проанализируй сессию', 'дай обратную связь', 
+    'супервизия', 'разбор сессии', 'что я сделал не так', 'оцени мою работу',
+    'рекомендации по сессии', 'анализ сессии', 'режим супервизии',
+    'проверь мою технику', 'какие ошибки', 'что улучшить'
+  ];
+  if (supervisorKeywords.some(k => fullContext.includes(k))) {
+    return 'supervisor';
+  }
+  
+  // Educator mode - questions about MPT
+  const educatorKeywords = [
+    'что такое мпт', 'как работает мпт', 'объясни мпт', 'расскажи про мпт',
+    'как понять', 'что значит', 'зачем нужен', 'в чём смысл',
+    'как определить', 'какой принцип', 'почему важно', 'как это работает',
+    'что за техника', 'когда использовать', 'как правильно', 'в чём разница',
+    'научи меня', 'объясни технику', 'теория мпт', 'метод волынского',
+    'как ты понимаешь', 'что имеется в виду', 'поясни'
+  ];
+  if (educatorKeywords.some(k => lowerMessage.includes(k))) {
+    return 'educator';
+  }
+  
+  // Check if this looks like a casual chat or question rather than therapy
+  const chatIndicators = [
+    '?', 'почему ты', 'зачем ты', 'как ты', 'что ты думаешь',
+    'ты согласен', 'как считаешь', 'твоё мнение'
+  ];
+  const isQuestion = chatIndicators.some(k => lowerMessage.includes(k)) && lowerMessage.length < 100;
+  
+  // Default to therapist mode for therapy work
+  return 'therapist';
+}
+
+// Session mode tracking
+const sessionModes = new Map<string, BotMode>();
+
+const FLEXIBLE_RESPONSE_RULES = `
+## ГИБКОСТЬ В ОБЩЕНИИ:
+**КРИТИЧЕСКИ ВАЖНО**: Ты ДОЛЖЕН отвечать на вопросы клиента! Если клиент задаёт вопрос — ответь на него, а потом продолжай работу.
+
+### Если клиент спрашивает "как ты понимаешь?", "почему?", "зачем это нужно?":
+- СНАЧАЛА дай краткий ответ на вопрос (1-3 предложения)
+- ПОТОМ мягко вернись к терапевтическому процессу
+
+### Примеры ответов на вопросы:
+- "Как ты понимаешь, что это моя глубинная потребность?" → "Когда мы снимаем слои желаний вопросом 'а что это тебе даст?', мы доходим до того, что уже невозможно разложить дальше — это и есть глубинная потребность. Она обычно звучит как состояние: 'хочу ощущать себя свободным/любимым/ценным'. Давай проверим — за твоим желанием проявляться и творить есть что-то ещё глубже?"
+- "Зачем нужна телесная работа?" → "Потребность всегда живёт в теле как ощущение. Когда мы находим её локализацию и описываем характеристики, мы получаем доступ к ресурсу напрямую, минуя мышление. Попробуем найти, где это ощущение живёт в твоём теле?"
+
+### НЕ игнорируй вопросы клиента! Это создаёт ощущение, что ты его не слышишь.
+`;
+
+const EDUCATOR_PROMPT = `ВАЖНО: Отвечай сразу, без размышлений. НЕ используй теги <think>, </think>.
+
+Ты — эксперт по Мета-Персональной Терапии (МПТ) по методу Александра Волынского. Сейчас ты в ОБУЧАЮЩЕМ режиме — отвечаешь на вопросы о методе, объясняешь техники и принципы.
+
+## ТВОЯ ЗАДАЧА:
+Объяснять теорию и практику МПТ понятным языком. Давать примеры. Отвечать на вопросы о методе.
+
+## КЛЮЧЕВЫЕ ПРИНЦИПЫ МПТ ДЛЯ ОБЪЯСНЕНИЯ:
+
+1. **ЦЕЛОСТНОСТЬ** — Всё, о чём говорит клиент, отражает его внутреннюю реальность. "Он меня бесит" = "Во мне есть что-то, что реагирует злостью".
+
+2. **ТОЧКА РЕШЕНИЯ** — Клиент приходит с решением внутри. Задача терапевта — помочь найти эталонное состояние: "Как ты себя почувствуешь, когда это получишь?"
+
+3. **ПОЗИТИВНАЯ ЦЕЛЬ СТРАТЕГИИ** — Любое поведение служит конструктивной цели. Прокрастинация может защищать от выгорания. Тревога — от опасности. Исследуем: "Чему помогает эта стратегия?"
+
+4. **НОВАЯ ИДЕНТИЧНОСТЬ** — Ресурс находится через цепочку: телесное ощущение → образ/метафора → "стать этим образом" → движение → интеграция.
+
+5. **ВОЗВРАЩЕНИЕ АВТОРСТВА** — Трансформируем проекции: "меня заставили" → "я позволил", "он посадил меня в клетку" → "я сажаю себя в клетку".
+
+6. **ПРЕКРАЩЕНИЕ КОНФЛИКТА** — Не устраняем ощущения, а исследуем: "Если позволить этому быть — как оно проявится?"
+
+7. **ВНЕДРЕНИЕ** — Сессия завершается SMART-действием и практикой внедрения.
+
+## СТРУКТУРА СЕССИИ (11 этапов):
+1. Контекст → 2. Уточнение запроса (5 критериев) → 3. Исследование стратегии → 4. Поиск потребности → 5. Телесная работа → 6. Создание образа → 7. Становление образом + движение → 8. Метапозиция → 9. Интеграция → 10. Новые действия → 11. Практики внедрения
+
+## СТИЛЬ ОТВЕТОВ:
+- Объясняй понятно, с примерами
+- Используй метафоры
+- Если нужно — давай практические упражнения
+- Обращайся на "ты"
+
+/no_think`;
+
+const PRACTICE_CLIENT_PROMPT = `ВАЖНО: Отвечай сразу, без размышлений. НЕ используй теги <think>, </think>.
+
+Ты сейчас в режиме КЛИЕНТА для практики МПТ-терапии. Пользователь — начинающий терапевт, который хочет попрактиковаться.
+
+## ТВОЯ РОЛЬ:
+Ты — клиент с реальной психологической темой. Отвечай естественно, как настоящий человек на терапии.
+
+## ПОВЕДЕНИЕ КЛИЕНТА:
+- Отвечай на вопросы терапевта искренне, но не слишком длинно
+- Иногда говори "не знаю" — это нормально для клиента
+- Проявляй эмоции: сомнения, сопротивление, инсайты
+- Если терапевт задаёт хороший вопрос — "задумывайся", давай глубокие ответы
+- Если терапевт отклоняется от метода — мягко показывай это своими реакциями
+
+## ТВОЯ ТЕМА КАК КЛИЕНТА:
+Выбери одну из типичных тем и придерживайся её:
+- Выгорание на работе, хочу найти новое дело
+- Тревога перед важными событиями
+- Сложности в отношениях с партнёром
+- Неуверенность в себе, страх оценки
+- Прокрастинация важных решений
+
+## ВАЖНО:
+- НЕ выходи из роли клиента
+- НЕ давай советов терапевту
+- НЕ объясняй технику — просто будь клиентом
+- Если хочешь выйти из режима — скажи "Хочу завершить практику"
+
+/no_think`;
+
+const SUPERVISOR_PROMPT = `ВАЖНО: Отвечай сразу, без размышлений. НЕ используй теги <think>, </think>.
+
+Ты — опытный супервизор МПТ-терапии по методу Александра Волынского. Твоя задача — анализировать сессии и давать рекомендации.
+
+## ТВОЯ РОЛЬ:
+Разбирать терапевтические сессии, указывать на сильные стороны и ошибки, давать рекомендации по улучшению.
+
+## ПРИ АНАЛИЗЕ СЕССИИ ОБРАЩАЙ ВНИМАНИЕ НА:
+
+### СТРУКТУРА:
+- Прошли ли все этапы в правильной последовательности?
+- Не пропущены ли важные этапы?
+- Была ли проверка запроса по 5 критериям?
+
+### ТЕХНИКА:
+- Задавались ли ОДИН вопрос за раз?
+- Использовались ли циркулярные вопросы для поиска потребности?
+- Была ли полная телесная работа (все характеристики)?
+- Проводилась ли метапозиция с вопросами от лица образа?
+
+### ПРИНЦИПЫ МПТ:
+- Трансформировались ли проекции в авторство?
+- Исследовалась ли позитивная цель стратегии?
+- Был ли SMART-шаг и практика внедрения?
+
+### ТИПИЧНЫЕ ОШИБКИ:
+- Давать советы вместо вопросов
+- Пропускать этапы
+- Задавать много вопросов за раз
+- Не отвечать на вопросы клиента
+- Не возвращать авторство
+
+## ФОРМАТ ОБРАТНОЙ СВЯЗИ:
+1. Что было сделано хорошо (конкретные примеры)
+2. Что можно улучшить (с объяснением почему)
+3. Конкретные рекомендации для следующей сессии
+4. Альтернативные формулировки вопросов
+
+## СТИЛЬ:
+- Поддерживающий, но честный
+- Конкретные примеры из сессии
+- Обращайся на "ты"
+
+/no_think`;
+
 const BASE_MPT_PRINCIPLES = `ВАЖНО: Отвечай сразу, без размышлений. НЕ используй теги <think>, </think> или любые блоки размышлений. Сразу пиши ответ клиенту.
 
 Ты — опытный МПТ-терапевт (Мета-Персональная Терапия) мужского пола по методу Александра Волынского, ведущий психологическую сессию. Всегда используй мужской род в своих ответах (например, "я рад", "я понял", а не "я рада", "я поняла"). ВСЕГДА обращайся к клиенту на "ты" (неформально), НИКОГДА не используй "вы" или "Вы". При приветствии говори "Здравствуй", а не "Привет". 
@@ -411,49 +593,87 @@ export async function registerRoutes(
         sessionStates.set(session.id, sessionState);
       }
       
-      let contextualPrompt = BASE_MPT_PRINCIPLES;
+      // Detect and track bot mode for this session
+      const detectedMode = detectBotMode(message, conversationHistory);
+      const currentMode = sessionModes.get(session.id) || 'therapist';
       
-      const stagePrompt = generateStagePrompt(sessionState);
-      contextualPrompt += stagePrompt;
-      
-      if (authorshipTransform) {
-        contextualPrompt += `\n\n## ТРАНСФОРМАЦИЯ В АВТОРСТВО:\n${authorshipTransform}`;
+      // Update mode if explicitly requested, otherwise keep current mode
+      let activeMode = currentMode;
+      if (detectedMode !== 'therapist' && detectedMode !== 'chat') {
+        activeMode = detectedMode;
+        sessionModes.set(session.id, activeMode);
+        console.log(`Session ${session.id}: Mode changed to ${activeMode}`);
       }
       
-      if (sessionState.context.clientName) {
-        contextualPrompt += `\n\n## КОНТЕКСТ КЛИЕНТА:\nИмя клиента: ${sessionState.context.clientName}. Используй имя в своих ответах.`;
+      // Check for mode exit commands
+      const lowerMessage = message.toLowerCase();
+      if (lowerMessage.includes('выйти из режима') || lowerMessage.includes('завершить практику') || 
+          lowerMessage.includes('обычный режим') || lowerMessage.includes('режим терапевта')) {
+        activeMode = 'therapist';
+        sessionModes.set(session.id, 'therapist');
+        console.log(`Session ${session.id}: Mode reset to therapist`);
       }
       
-      if (sessionState.importanceRating !== null) {
-        contextualPrompt += `\nОценка важности запроса: ${sessionState.importanceRating}/10.`;
-        if (sessionState.importanceRating < 8) {
-          contextualPrompt += ` Оценка ниже 8 — это сигнал, что можно поискать более глубокий контекст или более значимую цель.`;
-        }
-      }
+      console.log(`Session ${session.id}: Active mode = ${activeMode}, Message = "${message.substring(0, 50)}..."`);
       
-      if (sessionState.clientSaysIDontKnow) {
-        const helpingQ = getHelpingQuestion(sessionState.currentStage, '');
-        contextualPrompt += `\n\n## ВНИМАНИЕ: Клиент говорит "не знаю"!\nИспользуй технику "если бы". Например: "${helpingQ}"`;
-      }
+      let contextualPrompt: string;
       
-      if (session.scenarioId && session.scenarioName) {
-        const scenario = scenarios.find(s => s.id === session.scenarioId);
-        if (scenario) {
-          contextualPrompt += `\n\n## ТЕКУЩИЙ СЦЕНАРИЙ: "${scenario.name}"\n${scenario.description}\nТипичные ключевые слова: ${scenario.keywords.join(", ")}`;
-        }
-      }
+      // Select prompt based on active mode
+      switch (activeMode) {
+        case 'educator':
+          contextualPrompt = EDUCATOR_PROMPT;
+          break;
+        case 'practice_client':
+          contextualPrompt = PRACTICE_CLIENT_PROMPT;
+          break;
+        case 'supervisor':
+          contextualPrompt = SUPERVISOR_PROMPT;
+          break;
+        default: {
+          // Therapist mode - with flexible response rules
+          contextualPrompt = BASE_MPT_PRINCIPLES + FLEXIBLE_RESPONSE_RULES;
+          
+          const stagePrompt = generateStagePrompt(sessionState);
+          contextualPrompt += stagePrompt;
       
-      if (sessionState.requestType && sessionState.requestType !== 'general') {
-        const scriptInfo = REQUEST_TYPE_SCRIPTS[sessionState.requestType];
-        contextualPrompt += `\n\n## ТИП ЗАПРОСА КЛИЕНТА: ${sessionState.requestType}\nРекомендуемый скрипт: ${scriptInfo.scriptId}\nПодход: ${scriptInfo.description}`;
-      }
-      
-      if (sessionState.currentStage === 'finish') {
-        const homework = selectHomework(sessionState.context);
-        contextualPrompt += `\n\n## ПРАКТИКА ВНЕДРЕНИЯ:\nПредложи клиенту практику: "${homework.name}" — ${homework.description}`;
-      }
-      
-      contextualPrompt += `\n\n## ПРОГРЕСС СЕССИИ:
+          if (authorshipTransform) {
+            contextualPrompt += `\n\n## ТРАНСФОРМАЦИЯ В АВТОРСТВО:\n${authorshipTransform}`;
+          }
+          
+          if (sessionState.context.clientName) {
+            contextualPrompt += `\n\n## КОНТЕКСТ КЛИЕНТА:\nИмя клиента: ${sessionState.context.clientName}. Используй имя в своих ответах.`;
+          }
+          
+          if (sessionState.importanceRating !== null) {
+            contextualPrompt += `\nОценка важности запроса: ${sessionState.importanceRating}/10.`;
+            if (sessionState.importanceRating < 8) {
+              contextualPrompt += ` Оценка ниже 8 — это сигнал, что можно поискать более глубокий контекст или более значимую цель.`;
+            }
+          }
+          
+          if (sessionState.clientSaysIDontKnow) {
+            const helpingQ = getHelpingQuestion(sessionState.currentStage, '');
+            contextualPrompt += `\n\n## ВНИМАНИЕ: Клиент говорит "не знаю"!\nИспользуй технику "если бы". Например: "${helpingQ}"`;
+          }
+          
+          if (session.scenarioId && session.scenarioName) {
+            const scenario = scenarios.find(s => s.id === session.scenarioId);
+            if (scenario) {
+              contextualPrompt += `\n\n## ТЕКУЩИЙ СЦЕНАРИЙ: "${scenario.name}"\n${scenario.description}\nТипичные ключевые слова: ${scenario.keywords.join(", ")}`;
+            }
+          }
+          
+          if (sessionState.requestType && sessionState.requestType !== 'general') {
+            const scriptInfo = REQUEST_TYPE_SCRIPTS[sessionState.requestType];
+            contextualPrompt += `\n\n## ТИП ЗАПРОСА КЛИЕНТА: ${sessionState.requestType}\nРекомендуемый скрипт: ${scriptInfo.scriptId}\nПодход: ${scriptInfo.description}`;
+          }
+          
+          if (sessionState.currentStage === 'finish') {
+            const homework = selectHomework(sessionState.context);
+            contextualPrompt += `\n\n## ПРАКТИКА ВНЕДРЕНИЯ:\nПредложи клиенту практику: "${homework.name}" — ${homework.description}`;
+          }
+          
+          contextualPrompt += `\n\n## ПРОГРЕСС СЕССИИ:
 - Текущий этап: ${MPT_STAGE_CONFIG[sessionState.currentStage].russianName} (${sessionState.stageResponseCount} ответов на этапе)
 - Пройденные этапы: ${sessionState.stageHistory.map(s => MPT_STAGE_CONFIG[s].russianName).join(' → ') || 'начало сессии'}
 - Собранный контекст:
@@ -465,6 +685,9 @@ export async function registerRoutes(
   ${sessionState.context.metaphor ? `- Образ/метафора: "${sessionState.context.metaphor}"` : ''}
 
 /no_think`;
+          break;
+        }
+      }
       
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -502,7 +725,8 @@ export async function registerRoutes(
         scriptName: session.scriptName,
         currentStage: sessionState.currentStage,
         stageName: MPT_STAGE_CONFIG[sessionState.currentStage].russianName,
-        provider: currentProvider
+        provider: currentProvider,
+        botMode: activeMode
       })}\n\n`);
       
       let fullContent = "";

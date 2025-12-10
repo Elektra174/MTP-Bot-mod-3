@@ -16,6 +16,7 @@ function App() {
   const [sessionKey, setSessionKey] = useState(0);
   const [loadedSession, setLoadedSession] = useState<SavedSession | null>(null);
   const [sidebarRefreshTrigger, setSidebarRefreshTrigger] = useState(0);
+  const [pendingTriggerMessage, setPendingTriggerMessage] = useState<string | null>(null);
 
   const handleSelectScenario = (scenario: Scenario | null) => {
     setSelectedScenario(scenario);
@@ -32,6 +33,14 @@ function App() {
     setSelectedScenario(null);
     setSessionKey((prev) => prev + 1);
   };
+
+  const handleModeSelect = (mode: string, triggerMessage: string) => {
+    setPendingTriggerMessage(triggerMessage);
+  };
+
+  const handleTriggerMessageSent = useCallback(() => {
+    setPendingTriggerMessage(null);
+  }, []);
 
   const handleSessionSaved = useCallback(() => {
     setSidebarRefreshTrigger((prev) => prev + 1);
@@ -53,6 +62,7 @@ function App() {
                 onSelectScenario={handleSelectScenario}
                 onNewSession={handleNewSession}
                 onLoadSession={handleLoadSession}
+                onModeSelect={handleModeSelect}
                 refreshTrigger={sidebarRefreshTrigger}
               />
               <div className="flex flex-col flex-1 min-w-0">
@@ -67,6 +77,8 @@ function App() {
                     onNewSession={handleNewSession}
                     loadedSession={loadedSession}
                     onSessionSaved={handleSessionSaved}
+                    pendingTriggerMessage={pendingTriggerMessage}
+                    onTriggerMessageSent={handleTriggerMessageSent}
                   />
                 </main>
               </div>

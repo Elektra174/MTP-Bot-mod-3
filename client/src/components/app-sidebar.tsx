@@ -11,7 +11,7 @@ import {
   SidebarGroupLabel,
   SidebarGroupContent,
 } from "@/components/ui/sidebar";
-import { Brain, MessageSquarePlus, History, Trash2 } from "lucide-react";
+import { Brain, MessageSquarePlus, History, Trash2, GraduationCap, Users, ClipboardCheck } from "lucide-react";
 import { getSavedSessions, deleteSession, SavedSession } from "@/lib/session-storage";
 
 interface AppSidebarProps {
@@ -19,10 +19,11 @@ interface AppSidebarProps {
   onSelectScenario: (scenario: Scenario | null) => void;
   onNewSession: () => void;
   onLoadSession?: (session: SavedSession) => void;
+  onModeSelect?: (mode: string, triggerMessage: string) => void;
   refreshTrigger?: number;
 }
 
-export function AppSidebar({ selectedScenarioId, onSelectScenario, onNewSession, onLoadSession, refreshTrigger }: AppSidebarProps) {
+export function AppSidebar({ selectedScenarioId, onSelectScenario, onNewSession, onLoadSession, onModeSelect, refreshTrigger }: AppSidebarProps) {
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
 
   useEffect(() => {
@@ -62,7 +63,7 @@ export function AppSidebar({ selectedScenarioId, onSelectScenario, onNewSession,
       
       <SidebarContent>
         <SidebarGroup>
-          <div className="px-4 pt-4">
+          <div className="px-4 pt-4 flex flex-col gap-2">
             <Button 
               className="w-full justify-start" 
               variant={selectedScenarioId === null ? "default" : "outline"}
@@ -76,6 +77,56 @@ export function AppSidebar({ selectedScenarioId, onSelectScenario, onNewSession,
               Свободный запрос
             </Button>
           </div>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="px-4">Режимы работы</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <div className="flex flex-col gap-1 px-4">
+              <div
+                className="flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer text-sm"
+                onClick={() => {
+                  onSelectScenario(null);
+                  onNewSession();
+                  onModeSelect?.('educator', 'Расскажи про МПТ — какие основные принципы и структура сессии?');
+                }}
+              >
+                <GraduationCap className="w-4 h-4 text-blue-500" />
+                <div className="flex-1">
+                  <p className="font-medium">Обучение МПТ</p>
+                  <p className="text-xs text-muted-foreground">Вопросы о методе</p>
+                </div>
+              </div>
+              <div
+                className="flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer text-sm"
+                onClick={() => {
+                  onSelectScenario(null);
+                  onNewSession();
+                  onModeSelect?.('practice_client', 'Хочу попрактиковаться. Будь клиентом, а я буду терапевтом.');
+                }}
+              >
+                <Users className="w-4 h-4 text-green-500" />
+                <div className="flex-1">
+                  <p className="font-medium">Практика терапии</p>
+                  <p className="text-xs text-muted-foreground">Бот как клиент</p>
+                </div>
+              </div>
+              <div
+                className="flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer text-sm"
+                onClick={() => {
+                  onSelectScenario(null);
+                  onNewSession();
+                  onModeSelect?.('supervisor', 'Режим супервизии. Хочу разобрать сессию и получить рекомендации.');
+                }}
+              >
+                <ClipboardCheck className="w-4 h-4 text-orange-500" />
+                <div className="flex-1">
+                  <p className="font-medium">Супервизия</p>
+                  <p className="text-xs text-muted-foreground">Разбор сессий</p>
+                </div>
+              </div>
+            </div>
+          </SidebarGroupContent>
         </SidebarGroup>
 
         {savedSessions.length > 0 && (

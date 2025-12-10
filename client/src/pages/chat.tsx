@@ -14,9 +14,11 @@ interface ChatPageProps {
   onNewSession: () => void;
   loadedSession?: SavedSession | null;
   onSessionSaved?: () => void;
+  pendingTriggerMessage?: string | null;
+  onTriggerMessageSent?: () => void;
 }
 
-export function ChatPage({ selectedScenario, onNewSession, loadedSession, onSessionSaved }: ChatPageProps) {
+export function ChatPage({ selectedScenario, onNewSession, loadedSession, onSessionSaved, pendingTriggerMessage, onTriggerMessageSent }: ChatPageProps) {
   const [messages, setMessages] = useState<Message[]>(loadedSession?.messages || []);
   const [sessionId, setSessionId] = useState<string | null>(loadedSession?.id || null);
   const [phase, setPhase] = useState(loadedSession?.phase || "initial");
@@ -54,6 +56,14 @@ export function ChatPage({ selectedScenario, onNewSession, loadedSession, onSess
       }
     }
   }, [selectedScenario]);
+
+  // Handle pending trigger message from mode selection
+  useEffect(() => {
+    if (pendingTriggerMessage && messages.length === 0 && !isLoading) {
+      handleSendMessage(pendingTriggerMessage);
+      onTriggerMessageSent?.();
+    }
+  }, [pendingTriggerMessage, messages.length, isLoading]);
 
   useEffect(() => {
     if (sessionId && messages.length > 0 && messages.length > initialMessageCountRef.current) {

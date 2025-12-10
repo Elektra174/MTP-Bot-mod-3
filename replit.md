@@ -6,7 +6,30 @@ This is an AI-powered therapeutic chatbot application implementing Meta-Personal
 
 The system guides users through evidence-based therapeutic protocols including work with burnout, anxiety management, relationship difficulties, and self-identity crises. It follows strict MPT methodology principles focused on identifying deep needs, working with bodily sensations and emotions, and developing constructive strategies.
 
-## Recent Changes (December 08, 2025)
+## Recent Changes (December 10, 2025)
+
+**Multi-Mode Bot Implementation**: Added 4 operational modes with automatic mode detection
+- **Therapist Mode** (default): Conducts MPT therapy sessions with clients
+- **Educator Mode**: Answers questions about MPT methodology and theory
+- **Practice Client Mode**: Bot acts as a client so users can practice therapy skills
+- **Supervisor Mode**: Analyzes therapy sessions and provides recommendations
+
+**Flexible Response System**: Bot can now understand context and respond naturally
+- Added FLEXIBLE_RESPONSE_RULES to therapist mode for answering client questions mid-session
+- Mode detection based on message keywords (e.g., "что такое МПТ", "хочу попрактиковаться")
+- Per-session mode tracking with ability to switch modes
+- Mode exit commands to return to therapist mode
+
+**AI Provider Fallback**: Automatic switching from Cerebras to Algion on any API error
+- 5-minute fallback period before retrying Cerebras
+- Graceful degradation ensures continuous service
+
+**UI Updates**: Mode selection buttons added to sidebar
+- "Обучение МПТ" for educator mode
+- "Практика терапии" for practice client mode  
+- "Супервизия" for supervisor mode
+
+**Previous Changes (December 08, 2025)**
 
 **Project Import Completed**: Successfully imported GitHub repository and configured for Replit environment
 - Installed all npm dependencies (508 packages including React, Express, Tailwind, Radix UI, Cerebras SDK)
@@ -14,11 +37,8 @@ The system guides users through evidence-based therapeutic protocols including w
 - Verified Vite configuration already has Replit proxy compatibility (allowedHosts: true)
 - Configured development workflow "Start application" running on port 5000 with webview output
 - Configured CEREBRAS_API_KEY and ALGION_API_KEY environment secrets for AI services
-- Successfully tested application - Russian language UI loads correctly with full MPT interface
-- Configured deployment settings for production (autoscale deployment with npm build)
-- Database already provisioned (PostgreSQL with Drizzle ORM configured)
 
-**Status**: Application is fully functional and ready to use in both development and production modes. The MPT Therapist chatbot is operational with AI-powered therapeutic conversations in Russian.
+**Status**: Application is fully functional with multi-mode support. The MPT Therapist chatbot supports therapy sessions, methodology education, therapist practice, and session supervision.
 
 ## User Preferences
 
