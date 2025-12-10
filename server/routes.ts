@@ -612,9 +612,17 @@ export async function registerRoutes(
         const isRateLimitError = errorMessage.includes("429") || 
                                   errorMessage.toLowerCase().includes("rate limit") ||
                                   errorMessage.toLowerCase().includes("tokens per day limit");
+        const isAuthError = errorMessage.includes("401") ||
+                            errorMessage.includes("403") ||
+                            errorMessage.toLowerCase().includes("unauthorized") ||
+                            errorMessage.toLowerCase().includes("invalid") ||
+                            errorMessage.toLowerCase().includes("authentication");
+        const isCerebrasError = !useFallbackForThisRequest && currentProvider === "cerebras";
         
-        if (isRateLimitError && !useFallbackForThisRequest && algionClient) {
-          console.log(`Session ${session.id}: Cerebras rate limit hit, switching to Algion fallback`);
+        // Fallback to Algion on any Cerebras error (rate limit, auth error, or any other error)
+        if (isCerebrasError && algionClient) {
+          const errorType = isRateLimitError ? "rate limit" : (isAuthError ? "auth error" : "API error");
+          console.log(`Session ${session.id}: Cerebras ${errorType} (${errorMessage}), switching to Algion fallback`);
           sessionFallbackState.set(session.id, { useFallback: true, fallbackTime: Date.now() });
           currentProvider = "algion";
           
@@ -627,10 +635,10 @@ export async function registerRoutes(
           } catch (algionError) {
             throw algionError;
           }
-        } else if (isRateLimitError && !algionClient) {
-          console.log(`Session ${session.id}: Cerebras rate limit hit, but Algion is not configured`);
-          res.write(`data: ${JSON.stringify({ type: "error", message: "AI сервис временно перегружен. Пожалуйста, попробуйте позже." })}\n\n`);
-          throw new Error("Cerebras rate limit hit and Algion fallback not available");
+        } else if (isCerebrasError && !algionClient) {
+          console.log(`Session ${session.id}: Cerebras error, but Algion is not configured`);
+          res.write(`data: ${JSON.stringify({ type: "error", message: "AI сервис временно недоступен. Пожалуйста, попробуйте позже." })}\n\n`);
+          throw new Error("Cerebras error and Algion fallback not available");
         } else {
           throw apiError;
         }
