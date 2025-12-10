@@ -11,8 +11,13 @@ import {
   SidebarGroupLabel,
   SidebarGroupContent,
 } from "@/components/ui/sidebar";
-import { Brain, MessageSquarePlus, History, Trash2, GraduationCap, Users, ClipboardCheck } from "lucide-react";
-import { getSavedSessions, deleteSession, SavedSession } from "@/lib/session-storage";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Brain, MessageSquarePlus, History, Trash2, GraduationCap, Users, ClipboardCheck, ChevronDown, RotateCcw } from "lucide-react";
+import { getSavedSessions, deleteSession, clearAllSessions, clearSessionsByMode, getSessionByMode, SavedSession, BotMode, MODE_NAMES } from "@/lib/session-storage";
 
 interface AppSidebarProps {
   selectedScenarioId: string | null;
@@ -25,6 +30,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ selectedScenarioId, onSelectScenario, onNewSession, onLoadSession, onModeSelect, refreshTrigger }: AppSidebarProps) {
   const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
+  const [isModesOpen, setIsModesOpen] = useState(false);
 
   useEffect(() => {
     setSavedSessions(getSavedSessions());
@@ -80,60 +86,130 @@ export function AppSidebar({ selectedScenarioId, onSelectScenario, onNewSession,
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel className="px-4">Режимы работы</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <div className="flex flex-col gap-1 px-4">
-              <div
-                className="flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer text-sm"
-                onClick={() => {
-                  onSelectScenario(null);
-                  onNewSession();
-                  onModeSelect?.('educator', 'Расскажи про МПТ — какие основные принципы и структура сессии?');
-                }}
-              >
-                <GraduationCap className="w-4 h-4 text-blue-500" />
-                <div className="flex-1">
-                  <p className="font-medium">Обучение МПТ</p>
-                  <p className="text-xs text-muted-foreground">Вопросы о методе</p>
+          <Collapsible open={isModesOpen} onOpenChange={setIsModesOpen}>
+            <CollapsibleTrigger className="w-full">
+              <SidebarGroupLabel className="px-4 flex items-center justify-between cursor-pointer hover:bg-accent/50 rounded-md">
+                <span>Режимы работы</span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${isModesOpen ? 'rotate-180' : ''}`} />
+              </SidebarGroupLabel>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <div className="flex flex-col gap-1 px-4">
+                  <div
+                    className="group flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer text-sm"
+                    onClick={() => {
+                      onSelectScenario(null);
+                      onModeSelect?.('educator', 'Расскажи про МПТ — какие основные принципы и структура сессии?');
+                    }}
+                  >
+                    <GraduationCap className="w-4 h-4 text-blue-500" />
+                    <div className="flex-1">
+                      <p className="font-medium">Обучение МПТ</p>
+                      <p className="text-xs text-muted-foreground">
+                        {getSessionByMode('educator') ? 'Продолжить диалог' : 'Вопросы о методе'}
+                      </p>
+                    </div>
+                    {getSessionByMode('educator') && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          clearSessionsByMode('educator');
+                          setSavedSessions(getSavedSessions());
+                        }}
+                        title="Начать заново"
+                      >
+                        <RotateCcw className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+                  <div
+                    className="group flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer text-sm"
+                    onClick={() => {
+                      onSelectScenario(null);
+                      onModeSelect?.('practice_client', 'Хочу попрактиковаться в роли терапевта, а ты будешь клиентом.');
+                    }}
+                  >
+                    <Users className="w-4 h-4 text-green-500" />
+                    <div className="flex-1">
+                      <p className="font-medium">Практика терапии</p>
+                      <p className="text-xs text-muted-foreground">
+                        {getSessionByMode('practice_client') ? 'Продолжить практику' : 'Бот как клиент'}
+                      </p>
+                    </div>
+                    {getSessionByMode('practice_client') && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          clearSessionsByMode('practice_client');
+                          setSavedSessions(getSavedSessions());
+                        }}
+                        title="Начать заново"
+                      >
+                        <RotateCcw className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+                  <div
+                    className="group flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer text-sm"
+                    onClick={() => {
+                      onSelectScenario(null);
+                      onModeSelect?.('supervisor', 'Режим супервизии. Хочу разобрать сессию и получить рекомендации.');
+                    }}
+                  >
+                    <ClipboardCheck className="w-4 h-4 text-orange-500" />
+                    <div className="flex-1">
+                      <p className="font-medium">Супервизия</p>
+                      <p className="text-xs text-muted-foreground">
+                        {getSessionByMode('supervisor') ? 'Продолжить разбор' : 'Разбор сессий'}
+                      </p>
+                    </div>
+                    {getSessionByMode('supervisor') && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          clearSessionsByMode('supervisor');
+                          setSavedSessions(getSavedSessions());
+                        }}
+                        title="Начать заново"
+                      >
+                        <RotateCcw className="w-3 h-3 text-muted-foreground hover:text-destructive" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div
-                className="flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer text-sm"
-                onClick={() => {
-                  onSelectScenario(null);
-                  onNewSession();
-                  onModeSelect?.('practice_client', 'Хочу попрактиковаться. Будь клиентом, а я буду терапевтом.');
-                }}
-              >
-                <Users className="w-4 h-4 text-green-500" />
-                <div className="flex-1">
-                  <p className="font-medium">Практика терапии</p>
-                  <p className="text-xs text-muted-foreground">Бот как клиент</p>
-                </div>
-              </div>
-              <div
-                className="flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer text-sm"
-                onClick={() => {
-                  onSelectScenario(null);
-                  onNewSession();
-                  onModeSelect?.('supervisor', 'Режим супервизии. Хочу разобрать сессию и получить рекомендации.');
-                }}
-              >
-                <ClipboardCheck className="w-4 h-4 text-orange-500" />
-                <div className="flex-1">
-                  <p className="font-medium">Супервизия</p>
-                  <p className="text-xs text-muted-foreground">Разбор сессий</p>
-                </div>
-              </div>
-            </div>
-          </SidebarGroupContent>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </Collapsible>
         </SidebarGroup>
 
         {savedSessions.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel className="px-4 flex items-center gap-2">
-              <History className="w-4 h-4" />
-              История сессий
+            <SidebarGroupLabel className="px-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4" />
+                История сессий
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                onClick={() => {
+                  clearAllSessions();
+                  setSavedSessions([]);
+                }}
+              >
+                Очистить
+              </Button>
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <div className="flex flex-col gap-1 px-4">
@@ -145,7 +221,7 @@ export function AppSidebar({ selectedScenarioId, onSelectScenario, onNewSession,
                   >
                     <div className="flex-1 min-w-0">
                       <p className="truncate font-medium">
-                        {session.scenarioName || "Свободный запрос"}
+                        {session.mode && MODE_NAMES[session.mode] ? MODE_NAMES[session.mode] : (session.scenarioName || "Свободный запрос")}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">
                         {session.preview}

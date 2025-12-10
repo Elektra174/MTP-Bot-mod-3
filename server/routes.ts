@@ -57,7 +57,8 @@ function detectBotMode(message: string, conversationHistory: Array<{role: string
     'хочу попрактиковаться', 'потренироваться', 'давай я буду терапевтом', 
     'будь клиентом', 'стань клиентом', 'выступи в роли клиента',
     'я терапевт', 'буду вести сессию', 'практика терапии', 'поиграем в терапию',
-    'режим практики', 'режим клиента', 'я хочу практиковать'
+    'режим практики', 'режим клиента', 'я хочу практиковать',
+    'в роли терапевта', 'ты будешь клиентом'
   ];
   if (practiceKeywords.some(k => fullContext.includes(k))) {
     return 'practice_client';
@@ -693,6 +694,38 @@ export async function registerRoutes(
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
       res.setHeader("X-Accel-Buffering", "no");
+      
+      // Special handling for practice_client mode first message
+      const isPracticeClientFirstMessage = activeMode === 'practice_client' && 
+        detectedMode === 'practice_client' && 
+        conversationHistory.length === 1;
+      
+      if (isPracticeClientFirstMessage) {
+        const fixedResponse = "Хорошо, я клиент — ты МПТ терапевт, начинай!";
+        
+        res.write(`data: ${JSON.stringify({ 
+          type: "meta", 
+          sessionId: session.id, 
+          scenarioId: session.scenarioId, 
+          scenarioName: session.scenarioName,
+          currentStage: sessionState.currentStage,
+          stageName: MPT_STAGE_CONFIG[sessionState.currentStage].russianName,
+          botMode: activeMode
+        })}\n\n`);
+        
+        res.write(`data: ${JSON.stringify({ type: "chunk", content: fixedResponse })}\n\n`);
+        
+        session.messages.push({
+          id: randomUUID(),
+          role: "assistant",
+          content: fixedResponse,
+          timestamp: new Date().toISOString(),
+        });
+        
+        res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+        res.end();
+        return;
+      }
       
       // Determine fallback state for this session
       const fallbackState = sessionFallbackState.get(session.id);

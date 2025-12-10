@@ -7,7 +7,7 @@ import { SessionHeader } from "@/components/session-header";
 import { EmptyChat } from "@/components/empty-chat";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { saveSession, SavedSession } from "@/lib/session-storage";
+import { saveSession, SavedSession, BotMode } from "@/lib/session-storage";
 
 interface ChatPageProps {
   selectedScenario: Scenario | null;
@@ -16,9 +16,10 @@ interface ChatPageProps {
   onSessionSaved?: () => void;
   pendingTriggerMessage?: string | null;
   onTriggerMessageSent?: () => void;
+  currentMode?: BotMode;
 }
 
-export function ChatPage({ selectedScenario, onNewSession, loadedSession, onSessionSaved, pendingTriggerMessage, onTriggerMessageSent }: ChatPageProps) {
+export function ChatPage({ selectedScenario, onNewSession, loadedSession, onSessionSaved, pendingTriggerMessage, onTriggerMessageSent, currentMode }: ChatPageProps) {
   const [messages, setMessages] = useState<Message[]>(loadedSession?.messages || []);
   const [sessionId, setSessionId] = useState<string | null>(loadedSession?.id || null);
   const [phase, setPhase] = useState(loadedSession?.phase || "initial");
@@ -73,11 +74,12 @@ export function ChatPage({ selectedScenario, onNewSession, loadedSession, onSess
         scenarioName: scenarioName,
         messages: messages,
         phase: phase,
+        mode: currentMode,
       });
       initialMessageCountRef.current = messages.length;
       onSessionSaved?.();
     }
-  }, [sessionId, messages, scenarioId, scenarioName, phase, onSessionSaved]);
+  }, [sessionId, messages, scenarioId, scenarioName, phase, onSessionSaved, currentMode]);
 
   const handleSendMessage = async (content: string) => {
     const userMessage: Message = {

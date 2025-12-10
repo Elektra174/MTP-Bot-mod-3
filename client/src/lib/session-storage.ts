@@ -1,5 +1,7 @@
 import { Message } from "@shared/schema";
 
+export type BotMode = 'therapist' | 'educator' | 'practice_client' | 'supervisor' | null;
+
 export interface SavedSession {
   id: string;
   scenarioId: string | null;
@@ -9,10 +11,17 @@ export interface SavedSession {
   createdAt: string;
   updatedAt: string;
   preview: string;
+  mode?: BotMode;
 }
 
 const STORAGE_KEY = "mpt-sessions";
 const MAX_SESSIONS = 20;
+
+export const MODE_NAMES: Record<string, string> = {
+  'educator': 'Обучение МПТ',
+  'practice_client': 'Практика терапии',
+  'supervisor': 'Супервизия',
+};
 
 export function getSavedSessions(): SavedSession[] {
   try {
@@ -33,6 +42,7 @@ export function saveSession(session: {
   scenarioName: string | null;
   messages: Message[];
   phase: string;
+  mode?: BotMode;
 }): void {
   if (!session.id || session.messages.length === 0) return;
   
@@ -52,6 +62,7 @@ export function saveSession(session: {
       createdAt: existingIndex >= 0 ? sessions[existingIndex].createdAt : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       preview: preview + (firstUserMessage && firstUserMessage.content.length > 50 ? "..." : ""),
+      mode: session.mode || (existingIndex >= 0 ? sessions[existingIndex].mode : null),
     };
     
     if (existingIndex >= 0) {
@@ -87,5 +98,20 @@ export function clearAllSessions(): void {
     localStorage.removeItem(STORAGE_KEY);
   } catch (e) {
     console.error("Failed to clear sessions:", e);
+  }
+}
+
+export function getSessionByMode(mode: BotMode): SavedSession | null {
+  const sessions = getSavedSessions();
+  return sessions.find(s => s.mode === mode) || null;
+}
+
+export function clearSessionsByMode(mode: BotMode): void {
+  try {
+    const sessions = getSavedSessions();
+    const filtered = sessions.filter(s => s.mode !== mode);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+  } catch (e) {
+    console.error("Failed to clear mode sessions:", e);
   }
 }

@@ -9,7 +9,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ChatPage } from "@/pages/chat";
 import { Scenario } from "@shared/schema";
-import { SavedSession } from "@/lib/session-storage";
+import { SavedSession, BotMode, getSessionByMode } from "@/lib/session-storage";
 
 function App() {
   const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(null);
@@ -17,10 +17,12 @@ function App() {
   const [loadedSession, setLoadedSession] = useState<SavedSession | null>(null);
   const [sidebarRefreshTrigger, setSidebarRefreshTrigger] = useState(0);
   const [pendingTriggerMessage, setPendingTriggerMessage] = useState<string | null>(null);
+  const [currentMode, setCurrentMode] = useState<BotMode>(null);
 
   const handleSelectScenario = (scenario: Scenario | null) => {
     setSelectedScenario(scenario);
     setLoadedSession(null);
+    setCurrentMode(null);
   };
 
   const handleNewSession = () => {
@@ -31,11 +33,25 @@ function App() {
   const handleLoadSession = (session: SavedSession) => {
     setLoadedSession(session);
     setSelectedScenario(null);
+    setCurrentMode(session.mode || null);
     setSessionKey((prev) => prev + 1);
   };
 
   const handleModeSelect = (mode: string, triggerMessage: string) => {
-    setPendingTriggerMessage(triggerMessage);
+    const typedMode = mode as BotMode;
+    setCurrentMode(typedMode);
+    
+    const existingSession = getSessionByMode(typedMode);
+    if (existingSession) {
+      setLoadedSession(existingSession);
+      setSelectedScenario(null);
+      setSessionKey((prev) => prev + 1);
+    } else {
+      setLoadedSession(null);
+      setSelectedScenario(null);
+      setSessionKey((prev) => prev + 1);
+      setPendingTriggerMessage(triggerMessage);
+    }
   };
 
   const handleTriggerMessageSent = useCallback(() => {
@@ -79,6 +95,7 @@ function App() {
                     onSessionSaved={handleSessionSaved}
                     pendingTriggerMessage={pendingTriggerMessage}
                     onTriggerMessageSent={handleTriggerMessageSent}
+                    currentMode={currentMode}
                   />
                 </main>
               </div>

@@ -8,6 +8,25 @@ The system guides users through evidence-based therapeutic protocols including w
 
 ## Recent Changes (December 10, 2025)
 
+**Practice Mode Updates**:
+- Changed practice mode trigger message to: "Хочу попрактиковаться в роли терапевта, а ты будешь клиентом."
+- Fixed initial response to: "Хорошо, я клиент — ты МПТ терапевт, начинай!"
+- Added special handling to return fixed response on practice mode activation
+
+**Session Persistence for Work Modes**:
+- Mode sessions (Обучение МПТ, Практика терапии, Супервизия) now save to localStorage
+- When clicking a mode, continues from existing session if one exists
+- Each mode shows "Продолжить..." when a saved session exists
+- Added reset button (rotate icon) per mode to clear and start fresh
+- Session history displays correct mode names
+- Data persists across browser sessions and page reloads
+
+**UI/UX Improvements**:
+- Made "Режимы работы" (Work modes) a collapsible dropdown in sidebar
+- Added "Очистить" (Clear) button to session history for clearing all history at once
+- Fixed mobile header layout - hides phase badge on small screens, compact button with icon only
+- Improved responsive design for session header to prevent overlap on mobile devices
+
 **Multi-Mode Bot Implementation**: Added 4 operational modes with automatic mode detection
 - **Therapist Mode** (default): Conducts MPT therapy sessions with clients
 - **Educator Mode**: Answers questions about MPT methodology and theory
@@ -24,7 +43,7 @@ The system guides users through evidence-based therapeutic protocols including w
 - 5-minute fallback period before retrying Cerebras
 - Graceful degradation ensures continuous service
 
-**UI Updates**: Mode selection buttons added to sidebar
+**UI Updates**: Mode selection buttons added to sidebar (now collapsible)
 - "Обучение МПТ" for educator mode
 - "Практика терапии" for practice client mode  
 - "Супервизия" for supervisor mode
